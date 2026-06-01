@@ -19,12 +19,14 @@
 
   let character = $state<Character | null>(null);
   let loading = $state(true);
-  let saving = $state(false);
   let generatingAll = $state(false);
   let copied = $state(false);
 
-  let activeGeneratingField = $state<string | null>(null);
+  let saveState = $state<"idle" | "waiting" | "saving">("idle");
+  let isInitialLoad = true;
   let saveTimeout: ReturnType<typeof setTimeout>;
+
+  let activeGeneratingField = $state<string | null>(null);
 
   onMount(async () => {
     if (!characterId) return goto("/");
@@ -39,21 +41,41 @@
 
   $effect(() => {
     if (character) {
+      JSON.stringify(character);
+
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        return;
+      }
+
+      saveState = "waiting";
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         saveCharacter();
-      }, 1000);
+      }, 5000);
     }
   });
 
-  async function saveCharacter() {
+  function saveCharacter() {
     if (!character) return;
-    saving = true;
-    character.updatedAt = new Date();
-    await db.characters.put($state.snapshot(character));
-    setTimeout(() => {
-      saving = false;
-    }, 500);
+    saveState = "saving";
+
+    const snap = $state.snapshot(character);
+    snap.updatedAt = new Date();
+
+    db.characters
+      .put(snap)
+      .then(() => {
+        if (saveState === "saving") {
+          setTimeout(() => {
+            saveState = "idle";
+          }, 1000);
+        }
+      })
+      .catch((err) => {
+        console.error("Autosave failed:", err);
+        saveState = "idle";
+      });
   }
 
   async function callAI(prompt: string, system?: string) {
@@ -285,6 +307,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
       <input
         type="text"
         bind:value={character.name}
+        aria-label="Character Name"
         class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
         placeholder="Character Name"
       />
@@ -299,8 +322,15 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             <Copy class="w-4 h-4" /> Export to Clipboard
           {/if}
         </button>
-        <div class="flex items-center gap-2 px-4 py-2 bg-secondary rounded-md">
-          {#if saving}
+        <div
+          class="flex items-center justify-center gap-2 px-4 py-2 bg-secondary rounded-md min-w-40"
+        >
+          {#if saveState === "waiting"}
+            <span
+              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+              >Unsaved changes...</span
+            >
+          {:else if saveState === "saving"}
             <span
               class="text-sm font-medium text-muted-foreground flex items-center gap-2"
               ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
@@ -378,6 +408,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
           </div>
           <textarea
             bind:value={character.data.description}
+            aria-label="Description"
             class="w-full border rounded-md p-4 min-h-37.5 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           ></textarea>
         </div>
@@ -409,6 +440,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               >
                 <div class="flex justify-between items-center mb-3">
                   <label
+                    for="first-msg-{i}"
                     class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
                     >{i === 0
                       ? "Main Greeting"
@@ -438,6 +470,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                   </div>
                 </div>
                 <textarea
+                  id="first-msg-{i}"
                   bind:value={character.data.firstMessages[i]}
                   class="w-full border rounded-md p-3 min-h-30 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                 ></textarea>
@@ -485,10 +518,12 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                 >
                 <div>
                   <label
+                    for="ex-user-{i}"
                     class="text-sm font-semibold mb-1 block text-muted-foreground"
                     >User Prompt (Optional)</label
                   >
                   <textarea
+                    id="ex-user-{i}"
                     bind:value={ex.user}
                     class="w-full md:w-5/6 border rounded-md p-3 bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
                     rows="2"
@@ -497,7 +532,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                 </div>
                 <div>
                   <div class="flex justify-between items-center mb-1">
-                    <label class="text-sm font-semibold text-foreground"
+                    <label
+                      for="ex-char-{i}"
+                      class="text-sm font-semibold text-foreground"
                       >Character Response</label
                     >
                     <button
@@ -515,6 +552,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                     </button>
                   </div>
                   <textarea
+                    id="ex-char-{i}"
                     bind:value={ex.character}
                     class="w-full border rounded-md p-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
                     rows="4"
@@ -537,7 +575,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
         <div class="space-y-3">
           <div class="flex justify-between items-center">
-            <label class="font-semibold text-lg">Personality</label>
+            <label for="sub-personality" class="font-semibold text-lg"
+              >Personality</label
+            >
             <button
               onclick={() =>
                 enhanceField(
@@ -553,6 +593,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             </button>
           </div>
           <textarea
+            id="sub-personality"
             bind:value={character.data.personality}
             class="w-full border rounded-md p-4 min-h-30 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           ></textarea>
@@ -560,7 +601,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
         <div class="space-y-3">
           <div class="flex justify-between items-center">
-            <label class="font-semibold text-lg">Scenario</label>
+            <label for="sub-scenario" class="font-semibold text-lg"
+              >Scenario</label
+            >
             <button
               onclick={() =>
                 enhanceField(
@@ -576,6 +619,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             </button>
           </div>
           <textarea
+            id="sub-scenario"
             bind:value={character.data.scenario}
             class="w-full border rounded-md p-4 min-h-30 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           ></textarea>
@@ -583,7 +627,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
         <div class="space-y-3">
           <div class="flex justify-between items-center">
-            <label class="font-semibold text-lg">Backstory</label>
+            <label for="sub-backstory" class="font-semibold text-lg"
+              >Backstory</label
+            >
             <button
               onclick={() =>
                 enhanceField(
@@ -599,6 +645,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             </button>
           </div>
           <textarea
+            id="sub-backstory"
             bind:value={character.data.backstory}
             class="w-full border rounded-md p-4 min-h-37.5 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           ></textarea>

@@ -110,7 +110,7 @@
     </div>
 
     <div class="flex flex-col gap-3">
-      <label class="font-medium">Generation Model</label>
+      <div id="model-label" class="font-medium">Generation Model</div>
       {#if loadingModels}
         <div class="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 class="w-4 h-4 animate-spin" /> Loading models...
@@ -119,6 +119,7 @@
         <div class="relative w-full">
           <button
             type="button"
+            aria-labelledby="model-label"
             onclick={() => (dropdownOpen = !dropdownOpen)}
             class="w-full flex items-center justify-between border rounded-md px-4 py-2 bg-background hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-left"
           >
@@ -144,6 +145,7 @@
                   type="text"
                   bind:value={searchQuery}
                   placeholder="Search models..."
+                  aria-label="Search models"
                   class="w-full bg-transparent focus:outline-none text-sm py-1"
                   autocomplete="off"
                 />
