@@ -10,6 +10,8 @@
     ArrowLeft,
     Plus,
     Trash2,
+    Copy,
+    Check,
   } from "lucide-svelte";
   import { goto } from "$app/navigation";
 
@@ -19,6 +21,7 @@
   let loading = $state(true);
   let saving = $state(false);
   let generatingAll = $state(false);
+  let copied = $state(false);
 
   let activeGeneratingField = $state<string | null>(null);
   let saveTimeout: ReturnType<typeof setTimeout>;
@@ -67,6 +70,9 @@
           system,
           model: settings.model,
           apiKey: settings.apiKey,
+          temperature: settings.temperature,
+          frequencyPenalty: settings.frequencyPenalty,
+          presencePenalty: settings.presencePenalty,
         }),
       });
       const data = await res.json();
@@ -81,14 +87,13 @@
     }
   }
 
-  // Refined update callback method to sidestep TS strict path typing completely
   async function enhanceField(
     fieldName: string,
     currentContent: string,
     updateCb: (val: string) => void,
   ) {
     if (!character) return;
-    activeGeneratingField = fieldName; // Used just for UI state
+    activeGeneratingField = fieldName;
 
     const prompt = `You are an expert roleplay character creator.
 The main concept for this character is: ${character.data.mainPrompt}
@@ -99,11 +104,7 @@ ${currentContent || "(No content yet)"}
 Respond ONLY with the improved content. Do not include any meta-commentary, markdown formatting (unless it's just plain text paragraphs), or explanations. Keep the tone appropriate for character definitions.`;
 
     const result = await callAI(prompt);
-
-    if (result) {
-      updateCb(result.trim());
-    }
-
+    if (result) updateCb(result.trim());
     activeGeneratingField = null;
   }
 
@@ -180,11 +181,64 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
         );
       }
     }
-
     generatingAll = false;
   }
 
-  // Helpers for Arrays
+  // Export string formatting
+  function copyToClipboard() {
+    if (!character) return;
+    const c = character.data;
+
+    let parts: string[] = [];
+
+    // 1. Name
+    parts.push(`Name: ${character.name}`);
+
+    // 2. Description + Subfields
+    let descPart = c.description.trim();
+    let subfields: string[] = [];
+    if (c.personality?.trim())
+      subfields.push(`Personality: ${c.personality.trim()}`);
+    if (c.scenario?.trim()) subfields.push(`Scenario: ${c.scenario.trim()}`);
+    if (c.backstory?.trim()) subfields.push(`Backstory: ${c.backstory.trim()}`);
+    if (subfields.length > 0) {
+      descPart += "\n\n" + subfields.join("\n");
+    }
+    if (descPart) parts.push(descPart);
+
+    // 3. First Messages
+    let fmParts: string[] = [];
+    c.firstMessages.forEach((msg, i) => {
+      if (!msg.trim()) return;
+      if (i === 0) {
+        fmParts.push(`First message:\n${msg.trim()}`);
+      } else {
+        fmParts.push(`Alternative greeting ${i}:\n${msg.trim()}`);
+      }
+    });
+    if (fmParts.length > 0) parts.push(fmParts.join("\n\n"));
+
+    // 4. Dialogue Examples
+    if (c.exampleMessages.some((ex) => ex.character.trim())) {
+      let exParts: string[] = [];
+      c.exampleMessages.forEach((ex) => {
+        if (!ex.character.trim()) return;
+        let exStr = "<START>\n";
+        if (ex.user.trim()) exStr += `{{user}}: ${ex.user.trim()}\n`;
+        exStr += `{{char}}: ${ex.character.trim()}`;
+        exParts.push(exStr);
+      });
+      parts.push(exParts.join("\n\n"));
+    }
+
+    const finalExport = "---\n" + parts.join("\n---\n") + "\n---";
+
+    navigator.clipboard.writeText(finalExport).then(() => {
+      copied = true;
+      setTimeout(() => (copied = false), 2000);
+    });
+  }
+
   function addFirstMessage() {
     if (character)
       character.data.firstMessages = [...character.data.firstMessages, ""];
@@ -192,21 +246,18 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
   function removeFirstMessage(index: number) {
     if (character) character.data.firstMessages.splice(index, 1);
   }
-
   function addExampleMessage() {
-    if (character) {
+    if (character)
       character.data.exampleMessages = [
         ...character.data.exampleMessages,
         { id: crypto.randomUUID(), user: "", character: "" },
       ];
-    }
   }
   function removeExampleMessage(id: string) {
-    if (character) {
+    if (character)
       character.data.exampleMessages = character.data.exampleMessages.filter(
         (m) => m.id !== id,
       );
-    }
   }
 </script>
 
@@ -237,18 +288,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
         class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
         placeholder="Character Name"
       />
-      <div class="flex items-center gap-2 px-4 py-2 bg-secondary rounded-full">
-        {#if saving}
-          <span
-            class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-            ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
-          >
-        {:else}
-          <span
-            class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-            ><Save class="w-4 h-4" /> Auto-Saved</span
-          >
-        {/if}
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          onclick={copyToClipboard}
+          class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
+        >
+          {#if copied}
+            <Check class="w-4 h-4" /> Copied!
+          {:else}
+            <Copy class="w-4 h-4" /> Export to Clipboard
+          {/if}
+        </button>
+        <div class="flex items-center gap-2 px-4 py-2 bg-secondary rounded-md">
+          {#if saving}
+            <span
+              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+              ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
+            >
+          {:else}
+            <span
+              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+              ><Save class="w-4 h-4" /> Auto-Saved</span
+            >
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -289,7 +352,6 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
       <!-- Main Fields Section -->
       <div class="space-y-8">
-        <!-- DESCRIPTION -->
         <div class="space-y-3">
           <div
             class="flex justify-between items-center border-b border-border pb-2"
@@ -421,7 +483,6 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                   class="absolute top-4 right-4 p-1 text-muted-foreground hover:text-destructive transition-colors"
                   ><Trash2 class="w-4 h-4" /></button
                 >
-
                 <div>
                   <label
                     class="text-sm font-semibold mb-1 block text-muted-foreground"
@@ -434,7 +495,6 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                     placeholder="e.g. *I walk into the tavern and wave*"
                   ></textarea>
                 </div>
-
                 <div>
                   <div class="flex justify-between items-center mb-1">
                     <label class="text-sm font-semibold text-foreground"

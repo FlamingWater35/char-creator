@@ -2,7 +2,7 @@ import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
 export const POST = async ({ request }: RequestEvent) => {
-  const { prompt, model, apiKey, system } = await request.json();
+  const { prompt, model, apiKey, system, temperature, frequencyPenalty, presencePenalty } = await request.json();
 
   if (!apiKey) {
     return json({ error: 'API Key is missing.' }, { status: 401 });
@@ -24,7 +24,10 @@ export const POST = async ({ request }: RequestEvent) => {
   try {
     const completion = await client.chat.completions.create({
       model: model || 'openai/gpt-4o',
-      messages: messages as any
+      messages: messages as any,
+      temperature: temperature ?? 0.8,
+      frequency_penalty: frequencyPenalty ?? 0,
+      presence_penalty: presencePenalty ?? 0
     });
 
     return json({ result: completion.choices[0].message.content });

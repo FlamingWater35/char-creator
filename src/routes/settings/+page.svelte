@@ -2,14 +2,16 @@
   import { settings } from "$lib/settings.svelte";
   import { onMount } from "svelte";
   import { Save, Loader2, Search, ChevronDown, Check } from "lucide-svelte";
+  import { setMode, resetMode } from "mode-watcher";
 
   let models = $state<{ id: string; name: string }[]>([]);
   let loadingModels = $state(false);
   let saved = $state(false);
 
-  // Searchable dropdown state
   let dropdownOpen = $state(false);
   let searchQuery = $state("");
+
+  let themePreference = $state("system");
 
   let filteredModels = $derived(
     models.filter(
@@ -24,17 +26,27 @@
   );
 
   onMount(async () => {
+    themePreference = localStorage.getItem("mode-watcher-mode") || "system";
+
     loadingModels = true;
     try {
       const res = await fetch("https://openrouter.ai/api/v1/models");
       const data = await res.json();
       models = data.data || [];
     } catch (e) {
-      console.error("Failed to fetch OpenRouter models", e);
+      console.error("Failed to fetch models", e);
     } finally {
       loadingModels = false;
     }
   });
+
+  function updateTheme() {
+    if (themePreference === "system") {
+      resetMode();
+    } else {
+      setMode(themePreference as "light" | "dark");
+    }
+  }
 
   function saveSettings() {
     settings.save();
@@ -53,7 +65,7 @@
   <title>Settings - Char Creator</title>
 </svelte:head>
 
-<div class="max-w-2xl mx-auto space-y-8">
+<div class="max-w-2xl mx-auto space-y-8 pb-20">
   <div>
     <h1 class="text-3xl font-bold tracking-tight mb-2">Settings</h1>
     <p class="text-muted-foreground">
@@ -61,7 +73,31 @@
     </p>
   </div>
 
+  <!-- General Settings -->
   <div class="space-y-6 bg-card border rounded-xl p-6 shadow-sm">
+    <h2 class="text-xl font-bold border-b border-border pb-2">General</h2>
+
+    <div class="flex flex-col gap-3">
+      <label class="font-medium" for="theme">Appearance</label>
+      <select
+        id="theme"
+        bind:value={themePreference}
+        onchange={updateTheme}
+        class="border rounded-md px-4 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+      >
+        <option value="system">Automatic (System)</option>
+        <option value="light">Light Mode</option>
+        <option value="dark">Dark Mode</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- AI Settings -->
+  <div class="space-y-6 bg-card border rounded-xl p-6 shadow-sm">
+    <h2 class="text-xl font-bold border-b border-border pb-2">
+      AI Configuration
+    </h2>
+
     <div class="flex flex-col gap-3">
       <label for="apiKey" class="font-medium">OpenRouter API Key</label>
       <input
@@ -71,21 +107,16 @@
         class="border rounded-md px-4 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
         placeholder="sk-or-v1-..."
       />
-      <p class="text-sm text-muted-foreground">
-        Your key is stored locally in your browser's LocalStorage and is never
-        sent to our servers.
-      </p>
     </div>
 
     <div class="flex flex-col gap-3">
-      <label class="font-medium">Default Generation Model</label>
+      <label class="font-medium">Generation Model</label>
       {#if loadingModels}
         <div class="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 class="w-4 h-4 animate-spin" /> Loading models from OpenRouter...
+          <Loader2 class="w-4 h-4 animate-spin" /> Loading models...
         </div>
       {:else}
         <div class="relative w-full">
-          <!-- Dropdown Trigger -->
           <button
             type="button"
             onclick={() => (dropdownOpen = !dropdownOpen)}
@@ -95,16 +126,13 @@
             <ChevronDown class="w-4 h-4 opacity-50 shrink-0" />
           </button>
 
-          <!-- Dropdown Menu -->
           {#if dropdownOpen}
-            <!-- Invisible backdrop to close on click outside -->
             <button
               type="button"
               class="fixed inset-0 z-40 cursor-default"
               aria-label="Close dropdown"
               onclick={() => (dropdownOpen = false)}
             ></button>
-
             <div
               class="absolute top-full left-0 w-full z-50 bg-popover border border-border mt-1 rounded-md shadow-lg overflow-hidden flex flex-col max-h-80"
             >
@@ -120,13 +148,7 @@
                   autocomplete="off"
                 />
               </div>
-
               <div class="overflow-y-auto flex-1 p-1">
-                {#if filteredModels.length === 0}
-                  <div class="p-4 text-center text-sm text-muted-foreground">
-                    No models found.
-                  </div>
-                {/if}
                 {#each filteredModels as model}
                   <button
                     type="button"
@@ -151,10 +173,76 @@
             </div>
           {/if}
         </div>
-        <p class="text-sm text-muted-foreground">
-          Select the model used for sparking ideas and generating fields.
-        </p>
       {/if}
+    </div>
+
+    <!-- Parameters -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between">
+          <label class="font-medium text-sm" for="temp">Temperature</label>
+          <span class="text-sm font-mono"
+            >{settings.temperature.toFixed(2)}</span
+          >
+        </div>
+        <input
+          id="temp"
+          type="range"
+          min="0"
+          max="2"
+          step="0.05"
+          bind:value={settings.temperature}
+          class="w-full"
+        />
+        <p class="text-xs text-muted-foreground">
+          Higher values make output more random, lower values make it more
+          focused.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between">
+          <label class="font-medium text-sm" for="freq"
+            >Repetition (Frequency) Penalty</label
+          >
+          <span class="text-sm font-mono"
+            >{settings.frequencyPenalty.toFixed(2)}</span
+          >
+        </div>
+        <input
+          id="freq"
+          type="range"
+          min="-2"
+          max="2"
+          step="0.05"
+          bind:value={settings.frequencyPenalty}
+          class="w-full"
+        />
+        <p class="text-xs text-muted-foreground">
+          Positive values penalize new tokens based on their existing frequency.
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between">
+          <label class="font-medium text-sm" for="pres">Presence Penalty</label>
+          <span class="text-sm font-mono"
+            >{settings.presencePenalty.toFixed(2)}</span
+          >
+        </div>
+        <input
+          id="pres"
+          type="range"
+          min="-2"
+          max="2"
+          step="0.05"
+          bind:value={settings.presencePenalty}
+          class="w-full"
+        />
+        <p class="text-xs text-muted-foreground">
+          Positive values penalize tokens if they have already appeared at all.
+        </p>
+      </div>
     </div>
 
     <div class="pt-4 border-t border-border flex justify-end">
