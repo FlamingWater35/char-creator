@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { db, type Character } from "$lib/db";
+  import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
   import { Plus, Trash2, Edit } from "lucide-svelte";
 
@@ -32,7 +33,10 @@
   }
 
   async function deleteChar(id: string) {
-    if (confirm("Are you sure you want to delete this character?")) {
+    const confirmed = await dialogs.confirm(
+      "Are you sure you want to delete this character? This cannot be undone.",
+    );
+    if (confirmed) {
       await db.characters.delete(id);
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
     }
@@ -49,7 +53,7 @@
   <h1 class="text-3xl font-bold tracking-tight">Your Characters</h1>
   <button
     onclick={createNew}
-    class="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity"
+    class="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full md:w-auto justify-center"
   >
     <Plus class="w-4 h-4" />
     Create New Character
@@ -57,7 +61,7 @@
 </div>
 
 {#if characters.length === 0}
-  <div class="text-center py-20 border border-dashed rounded-lg bg-card">
+  <div class="text-center py-20 border border-dashed rounded-lg bg-card px-4">
     <h2 class="text-xl font-semibold mb-2">No characters found</h2>
     <p class="text-muted-foreground mb-6">
       Start building your first roleplay personality.
@@ -92,7 +96,7 @@
           <button
             onclick={() => deleteChar(char.id)}
             class="p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-            title="Delete"
+            aria-label="Delete"
           >
             <Trash2 class="w-4 h-4" />
           </button>

@@ -3,6 +3,8 @@
   import { onMount } from "svelte";
   import { db, type Character, type ExampleMessage } from "$lib/db";
   import { settings } from "$lib/settings.svelte";
+  import { dialogs } from "$lib/dialogs.svelte";
+  import { autoresize } from "$lib/autoresize";
   import {
     Sparkles,
     Loader2,
@@ -12,6 +14,7 @@
     Trash2,
     Copy,
     Check,
+    X,
   } from "lucide-svelte";
   import { goto } from "$app/navigation";
 
@@ -27,6 +30,7 @@
   let saveTimeout: ReturnType<typeof setTimeout>;
 
   let activeGeneratingField = $state<string | null>(null);
+  let aiAbortController = $state<AbortController | null>(null);
 
   onMount(async () => {
     if (!characterId) return goto("/");
@@ -78,15 +82,32 @@
       });
   }
 
+  function cancelGeneration() {
+    if (aiAbortController) {
+      aiAbortController.abort();
+      aiAbortController = null;
+      activeGeneratingField = null;
+      generatingAll = false;
+    }
+  }
+
   async function callAI(prompt: string, system?: string) {
     if (!settings.apiKey) {
-      alert("Please set your OpenRouter API key in settings first.");
+      dialogs.alert(
+        "Please set your OpenRouter API key in settings first.",
+        "Missing API Key",
+      );
       return null;
     }
+
+    cancelGeneration();
+    aiAbortController = new AbortController();
+
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: aiAbortController.signal,
         body: JSON.stringify({
           prompt,
           system,
@@ -97,15 +118,21 @@
           presencePenalty: settings.presencePenalty,
         }),
       });
+
       const data = await res.json();
       if (data.error) {
-        alert("API Error: " + data.error);
+        dialogs.alert("API Error: " + data.error, "Generation Failed");
         return null;
       }
       return data.result;
-    } catch (e) {
-      alert("Network error while calling AI.");
+    } catch (e: any) {
+      if (e.name === "AbortError") {
+        return null;
+      }
+      dialogs.alert("Network error while calling AI.", "Error");
       return null;
+    } finally {
+      aiAbortController = null;
     }
   }
 
@@ -127,13 +154,19 @@ Respond ONLY with the improved content. Do not include any meta-commentary, mark
 
     const result = await callAI(prompt);
     if (result) updateCb(result.trim());
-    activeGeneratingField = null;
+
+    if (activeGeneratingField === fieldName) {
+      activeGeneratingField = null;
+    }
   }
 
   async function generateAll() {
     if (!character) return;
     if (!character.data.mainPrompt) {
-      alert("Please enter a core concept (Main Prompt) first.");
+      dialogs.alert(
+        "Please enter a core concept (Main Prompt) first.",
+        "Concept Missing",
+      );
       return;
     }
 
@@ -198,15 +231,15 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
         }
       } catch (e) {
         console.error("Failed to parse JSON response", e);
-        alert(
+        dialogs.alert(
           "Failed to parse AI response. The model might not have returned valid JSON.",
+          "Parsing Error",
         );
       }
     }
     generatingAll = false;
   }
 
-  // Export string formatting
   function copyToClipboard() {
     if (!character) return;
     const c = character.data;
@@ -223,20 +256,15 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
       subfields.push(`Personality: ${c.personality.trim()}`);
     if (c.scenario?.trim()) subfields.push(`Scenario: ${c.scenario.trim()}`);
     if (c.backstory?.trim()) subfields.push(`Backstory: ${c.backstory.trim()}`);
-    if (subfields.length > 0) {
-      descPart += "\n\n" + subfields.join("\n");
-    }
+    if (subfields.length > 0) descPart += "\n\n" + subfields.join("\n");
     if (descPart) parts.push(descPart);
 
     // 3. First Messages
     let fmParts: string[] = [];
     c.firstMessages.forEach((msg, i) => {
       if (!msg.trim()) return;
-      if (i === 0) {
-        fmParts.push(`First message:\n${msg.trim()}`);
-      } else {
-        fmParts.push(`Alternative greeting ${i}:\n${msg.trim()}`);
-      }
+      if (i === 0) fmParts.push(`First message:\n${msg.trim()}`);
+      else fmParts.push(`Alternative greeting ${i}:\n${msg.trim()}`);
     });
     if (fmParts.length > 0) parts.push(fmParts.join("\n\n"));
 
@@ -311,10 +339,12 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
         class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
         placeholder="Character Name"
       />
-      <div class="flex flex-wrap items-center gap-2">
+      <div
+        class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
+      >
         <button
           onclick={copyToClipboard}
-          class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
+          class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
         >
           {#if copied}
             <Check class="w-4 h-4" /> Copied!
@@ -347,7 +377,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
     <div class="space-y-12">
       <!-- Main Prompt / Concept Section -->
-      <div class="bg-card border-2 border-blue-500/20 rounded-xl p-6 shadow-sm">
+      <div
+        class="bg-card border-2 border-blue-500/20 rounded-xl p-4 sm:p-6 shadow-sm"
+      >
         <div
           class="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4"
         >
@@ -360,22 +392,29 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               AI generation.
             </p>
           </div>
-          <button
-            onclick={generateAll}
-            disabled={generatingAll || !character.data.mainPrompt}
-            class="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap"
-          >
-            {#if generatingAll}
-              <Loader2 class="w-4 h-4 animate-spin" /> Generating Sheet...
-            {:else}
+
+          {#if generatingAll}
+            <button
+              onclick={cancelGeneration}
+              class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap"
+            >
+              <Loader2 class="w-4 h-4 animate-spin" /> Cancel Generation
+            </button>
+          {:else}
+            <button
+              onclick={generateAll}
+              disabled={!character.data.mainPrompt}
+              class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap"
+            >
               <Sparkles class="w-4 h-4" /> Generate All Fields
-            {/if}
-          </button>
+            </button>
+          {/if}
         </div>
         <textarea
           id="main-prompt"
+          use:autoresize={character.data.mainPrompt}
           bind:value={character.data.mainPrompt}
-          class="w-full border rounded-md p-4 min-h-25 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-y"
+          class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25"
           placeholder="e.g. A grumpy but brilliant dwarven blacksmith..."
         ></textarea>
       </div>
@@ -392,24 +431,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                 Main overview of the character's appearance and general vibe.
               </p>
             </div>
-            <button
-              onclick={() =>
-                enhanceField(
-                  "Description",
-                  character!.data.description,
-                  (v) => (character!.data.description = v),
-                )}
-              class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-3 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-            >
-              {#if activeGeneratingField === "Description"}<Loader2
-                  class="w-4 h-4 animate-spin"
-                />{:else}<Sparkles class="w-4 h-4" /> Enhance{/if}
-            </button>
+            {#if activeGeneratingField === "Description"}
+              <button
+                onclick={cancelGeneration}
+                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-3 py-1.5 rounded-md hover:bg-destructive/10 transition-colors"
+                ><X class="w-4 h-4" /> Cancel</button
+              >
+            {:else}
+              <button
+                onclick={() =>
+                  enhanceField(
+                    "Description",
+                    character!.data.description,
+                    (v) => (character!.data.description = v),
+                  )}
+                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-3 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                ><Sparkles class="w-4 h-4" /> Enhance</button
+              >
+            {/if}
           </div>
           <textarea
+            use:autoresize={character.data.description}
             bind:value={character.data.description}
             aria-label="Description"
-            class="w-full border rounded-md p-4 min-h-37.5 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
           ></textarea>
         </div>
 
@@ -429,7 +474,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               onclick={addFirstMessage}
               class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
             >
-              <Plus class="w-4 h-4" /> Add Alternative
+              <Plus class="w-4 h-4" /> Add
             </button>
           </div>
 
@@ -442,28 +487,31 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                   <label
                     for="first-msg-{i}"
                     class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
-                    >{i === 0
-                      ? "Main Greeting"
-                      : `Alternative Greeting ${i}`}</label
+                    >{i === 0 ? "Main Greeting" : `Alternative ${i}`}</label
                   >
                   <div class="flex items-center gap-2">
-                    <button
-                      onclick={() =>
-                        enhanceField(
-                          `First Message ${i}`,
-                          msg,
-                          (v) => (character!.data.firstMessages[i] = v),
-                        )}
-                      class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                    >
-                      {#if activeGeneratingField === `First Message ${i}`}<Loader2
-                          class="w-3 h-3 animate-spin"
-                        />{:else}<Sparkles class="w-3 h-3" /> Enhance{/if}
-                    </button>
+                    {#if activeGeneratingField === `First Message ${i}`}
+                      <button
+                        onclick={cancelGeneration}
+                        class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                        ><X class="w-3 h-3" /> Cancel</button
+                      >
+                    {:else}
+                      <button
+                        onclick={() =>
+                          enhanceField(
+                            `First Message ${i}`,
+                            msg,
+                            (v) => (character!.data.firstMessages[i] = v),
+                          )}
+                        class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                        ><Sparkles class="w-3 h-3" /> Enhance</button
+                      >
+                    {/if}
                     {#if i > 0}
                       <button
                         onclick={() => removeFirstMessage(i)}
-                        class="p-1 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        class="p-1 text-muted-foreground hover:text-destructive transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                         ><Trash2 class="w-4 h-4" /></button
                       >
                     {/if}
@@ -471,8 +519,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                 </div>
                 <textarea
                   id="first-msg-{i}"
+                  use:autoresize={character.data.firstMessages[i]}
                   bind:value={character.data.firstMessages[i]}
-                  class="w-full border rounded-md p-3 min-h-30 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                  class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
                 ></textarea>
               </div>
             {/each}
@@ -494,7 +543,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               onclick={addExampleMessage}
               class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
             >
-              <Plus class="w-4 h-4" /> Add Example
+              <Plus class="w-4 h-4" /> Add
             </button>
           </div>
 
@@ -509,14 +558,14 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
             {#each character.data.exampleMessages as ex, i (ex.id)}
               <div
-                class="bg-card border rounded-lg p-5 shadow-sm relative space-y-4"
+                class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4"
               >
                 <button
                   onclick={() => removeExampleMessage(ex.id)}
                   class="absolute top-4 right-4 p-1 text-muted-foreground hover:text-destructive transition-colors"
                   ><Trash2 class="w-4 h-4" /></button
                 >
-                <div>
+                <div class="pr-8">
                   <label
                     for="ex-user-{i}"
                     class="text-sm font-semibold mb-1 block text-muted-foreground"
@@ -524,9 +573,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                   >
                   <textarea
                     id="ex-user-{i}"
+                    use:autoresize={ex.user}
                     bind:value={ex.user}
-                    class="w-full md:w-5/6 border rounded-md p-3 bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
-                    rows="2"
+                    class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15"
                     placeholder="e.g. *I walk into the tavern and wave*"
                   ></textarea>
                 </div>
@@ -537,25 +586,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       class="text-sm font-semibold text-foreground"
                       >Character Response</label
                     >
-                    <button
-                      onclick={() =>
-                        enhanceField(
-                          `Example Message ${i}`,
-                          ex.character,
-                          (v) => (ex.character = v),
-                        )}
-                      class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                    >
-                      {#if activeGeneratingField === `Example Message ${i}`}<Loader2
-                          class="w-3 h-3 animate-spin"
-                        />{:else}<Sparkles class="w-3 h-3" /> Enhance{/if}
-                    </button>
+                    {#if activeGeneratingField === `Example Message ${i}`}
+                      <button
+                        onclick={cancelGeneration}
+                        class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                        ><X class="w-3 h-3" /> Cancel</button
+                      >
+                    {:else}
+                      <button
+                        onclick={() =>
+                          enhanceField(
+                            `Example Message ${i}`,
+                            ex.character,
+                            (v) => (ex.character = v),
+                          )}
+                        class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                        ><Sparkles class="w-3 h-3" /> Enhance</button
+                      >
+                    {/if}
                   </div>
                   <textarea
                     id="ex-char-{i}"
+                    use:autoresize={ex.character}
                     bind:value={ex.character}
-                    class="w-full border rounded-md p-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
-                    rows="4"
+                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25"
                     placeholder="e.g. *glances up from his ale* 'What do you want?'"
                   ></textarea>
                 </div>
@@ -578,24 +632,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             <label for="sub-personality" class="font-semibold text-lg"
               >Personality</label
             >
-            <button
-              onclick={() =>
-                enhanceField(
-                  "Personality",
-                  character!.data.personality,
-                  (v) => (character!.data.personality = v),
-                )}
-              class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-            >
-              {#if activeGeneratingField === "Personality"}<Loader2
-                  class="w-4 h-4 animate-spin"
-                />{:else}<Sparkles class="w-4 h-4" /> Enhance{/if}
-            </button>
+            {#if activeGeneratingField === "Personality"}
+              <button
+                onclick={cancelGeneration}
+                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                ><X class="w-4 h-4" /> Cancel</button
+              >
+            {:else}
+              <button
+                onclick={() =>
+                  enhanceField(
+                    "Personality",
+                    character!.data.personality,
+                    (v) => (character!.data.personality = v),
+                  )}
+                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                ><Sparkles class="w-4 h-4" /> Enhance</button
+              >
+            {/if}
           </div>
           <textarea
             id="sub-personality"
+            use:autoresize={character.data.personality}
             bind:value={character.data.personality}
-            class="w-full border rounded-md p-4 min-h-30 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
           ></textarea>
         </div>
 
@@ -604,24 +664,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             <label for="sub-scenario" class="font-semibold text-lg"
               >Scenario</label
             >
-            <button
-              onclick={() =>
-                enhanceField(
-                  "Scenario",
-                  character!.data.scenario,
-                  (v) => (character!.data.scenario = v),
-                )}
-              class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-            >
-              {#if activeGeneratingField === "Scenario"}<Loader2
-                  class="w-4 h-4 animate-spin"
-                />{:else}<Sparkles class="w-4 h-4" /> Enhance{/if}
-            </button>
+            {#if activeGeneratingField === "Scenario"}
+              <button
+                onclick={cancelGeneration}
+                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                ><X class="w-4 h-4" /> Cancel</button
+              >
+            {:else}
+              <button
+                onclick={() =>
+                  enhanceField(
+                    "Scenario",
+                    character!.data.scenario,
+                    (v) => (character!.data.scenario = v),
+                  )}
+                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                ><Sparkles class="w-4 h-4" /> Enhance</button
+              >
+            {/if}
           </div>
           <textarea
             id="sub-scenario"
+            use:autoresize={character.data.scenario}
             bind:value={character.data.scenario}
-            class="w-full border rounded-md p-4 min-h-30 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
           ></textarea>
         </div>
 
@@ -630,24 +696,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             <label for="sub-backstory" class="font-semibold text-lg"
               >Backstory</label
             >
-            <button
-              onclick={() =>
-                enhanceField(
-                  "Backstory",
-                  character!.data.backstory,
-                  (v) => (character!.data.backstory = v),
-                )}
-              class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-            >
-              {#if activeGeneratingField === "Backstory"}<Loader2
-                  class="w-4 h-4 animate-spin"
-                />{:else}<Sparkles class="w-4 h-4" /> Enhance{/if}
-            </button>
+            {#if activeGeneratingField === "Backstory"}
+              <button
+                onclick={cancelGeneration}
+                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                ><X class="w-4 h-4" /> Cancel</button
+              >
+            {:else}
+              <button
+                onclick={() =>
+                  enhanceField(
+                    "Backstory",
+                    character!.data.backstory,
+                    (v) => (character!.data.backstory = v),
+                  )}
+                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                ><Sparkles class="w-4 h-4" /> Enhance</button
+              >
+            {/if}
           </div>
           <textarea
             id="sub-backstory"
+            use:autoresize={character.data.backstory}
             bind:value={character.data.backstory}
-            class="w-full border rounded-md p-4 min-h-37.5 bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
           ></textarea>
         </div>
       </div>

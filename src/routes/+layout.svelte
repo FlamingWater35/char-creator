@@ -2,6 +2,7 @@
   import "./layout.css";
   import { ModeWatcher } from "mode-watcher";
   import icon from "$lib/assets/favicon.svg";
+  import GlobalDialogs from "$lib/components/GlobalDialogs.svelte";
 
   let { children } = $props();
 </script>
@@ -12,6 +13,7 @@
 </svelte:head>
 
 <ModeWatcher />
+<GlobalDialogs />
 
 <div class="min-h-screen flex flex-col">
   <header class="border-b bg-background sticky top-0 z-10">

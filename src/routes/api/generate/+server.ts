@@ -30,10 +30,13 @@ export const POST = async ({ request, url }: RequestEvent) => {
       temperature: temperature ?? 0.8,
       frequency_penalty: frequencyPenalty ?? 0,
       presence_penalty: presencePenalty ?? 0
-    });
+    }, { signal: request.signal });
 
     return json({ result: completion.choices[0].message.content });
   } catch (error: any) {
+    if (error.name === 'AbortError') {
+      return new Response(null, { status: 499 });
+    }
     return json({ error: error.message }, { status: 500 });
   }
 };
