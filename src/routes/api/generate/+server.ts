@@ -1,18 +1,20 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
-export const POST = async ({ request }: RequestEvent) => {
+export const POST = async ({ request, url }: RequestEvent) => {
   const { prompt, model, apiKey, system, temperature, frequencyPenalty, presencePenalty } = await request.json();
 
   if (!apiKey) {
     return json({ error: 'API Key is missing.' }, { status: 401 });
   }
 
+  const siteUrl = request.headers.get('origin') || url.origin || 'https://char-creator-one.vercel.app/';
+
   const client = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: apiKey,
     defaultHeaders: {
-      'HTTP-Referer': 'http://localhost:5173',
+      'HTTP-Referer': siteUrl,
       'X-Title': 'Char Creator'
     }
   });
