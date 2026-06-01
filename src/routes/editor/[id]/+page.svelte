@@ -253,7 +253,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
       parts.push(exParts.join("\n\n"));
     }
 
-    const finalExport = "---\n" + parts.join("\n---\n") + "\n---";
+    const finalExport = "---\n\n" + parts.join("\n\n---\n\n") + "\n\n---";
 
     navigator.clipboard.writeText(finalExport).then(() => {
       copied = true;

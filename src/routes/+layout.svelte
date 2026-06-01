@@ -7,7 +7,8 @@
 </script>
 
 <svelte:head>
-  <link rel="icon" href={icon} />
+  <link rel="icon" type="image/svg+xml" href={icon} />
+  <link rel="shortcut icon" href={icon} />
 </svelte:head>
 
 <ModeWatcher />
