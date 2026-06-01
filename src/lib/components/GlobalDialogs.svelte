@@ -1,7 +1,8 @@
 <script lang="ts">
   import { dialogs } from "$lib/dialogs.svelte";
+  import { fade, scale } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
 
-  // Close on Escape key
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && dialogs.isOpen) {
       dialogs.close(false);
@@ -14,11 +15,13 @@
 {#if dialogs.isOpen}
   <!-- Backdrop -->
   <div
+    transition:fade={{ duration: 150 }}
     class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   >
     <!-- Dialog Box -->
     <div
-      class="bg-card text-card-foreground border rounded-lg shadow-lg w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200"
+      transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
+      class="bg-card text-card-foreground border rounded-lg shadow-lg w-full max-w-md p-6"
       role="dialog"
       aria-modal="true"
     >

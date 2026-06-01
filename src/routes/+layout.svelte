@@ -3,6 +3,8 @@
   import { ModeWatcher } from "mode-watcher";
   import icon from "$lib/assets/favicon.svg";
   import GlobalDialogs from "$lib/components/GlobalDialogs.svelte";
+  import { page } from "$app/stores";
+  import { fade } from "svelte/transition";
 
   let { children } = $props();
 </script>
@@ -36,7 +38,11 @@
     </div>
   </header>
 
-  <main class="flex-1 container mx-auto px-4 py-8">
-    {@render children()}
+  <main class="flex-1 container mx-auto px-4 py-8 page-transition-grid">
+    {#key $page.url.pathname}
+      <div in:fade={{ duration: 200, delay: 200 }} class="w-full">
+        {@render children()}
+      </div>
+    {/key}
   </main>
 </div>

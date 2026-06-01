@@ -5,6 +5,7 @@
   import { settings } from "$lib/settings.svelte";
   import { dialogs } from "$lib/dialogs.svelte";
   import { autoresize } from "$lib/autoresize";
+  import { fade } from "svelte/transition";
   import {
     Sparkles,
     Loader2,
@@ -315,414 +316,424 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
   <title>Editing: {character?.name || "Loading"} - Char Creator</title>
 </svelte:head>
 
-{#if loading}
-  <div class="flex justify-center items-center py-32">
-    <Loader2 class="w-8 h-8 animate-spin text-muted-foreground" />
-  </div>
-{:else if character}
-  <div class="max-w-4xl mx-auto pb-24">
-    <a
-      href="/"
-      class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-    >
-      <ArrowLeft class="w-4 h-4" /> Back to Dashboard
-    </a>
-
-    <!-- Header Section -->
+<!-- Grid layout strictly for crossfading the loading state and content state -->
+<div class="page-transition-grid">
+  {#if loading}
     <div
-      class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4"
+      out:fade={{ duration: 150 }}
+      class="flex flex-col justify-center items-center py-32 text-muted-foreground w-full"
     >
-      <input
-        type="text"
-        bind:value={character.name}
-        aria-label="Character Name"
-        class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
-        placeholder="Character Name"
-      />
-      <div
-        class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
-      >
-        <button
-          onclick={copyToClipboard}
-          class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
-        >
-          {#if copied}
-            <Check class="w-4 h-4" /> Copied!
-          {:else}
-            <Copy class="w-4 h-4" /> Export to Clipboard
-          {/if}
-        </button>
-        <div
-          class="flex items-center justify-center gap-2 px-4 py-2 bg-secondary rounded-md min-w-40"
-        >
-          {#if saveState === "waiting"}
-            <span
-              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-              >Unsaved changes...</span
-            >
-          {:else if saveState === "saving"}
-            <span
-              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-              ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
-            >
-          {:else}
-            <span
-              class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-              ><Save class="w-4 h-4" /> Auto-Saved</span
-            >
-          {/if}
-        </div>
-      </div>
+      <Loader2 class="w-8 h-8 animate-spin mb-4" />
+      <p>Loading editor...</p>
     </div>
-
-    <div class="space-y-12">
-      <!-- Main Prompt / Concept Section -->
-      <div
-        class="bg-card border-2 border-blue-500/20 rounded-xl p-4 sm:p-6 shadow-sm"
+  {:else if character}
+    <div
+      in:fade={{ duration: 200, delay: 150 }}
+      class="max-w-4xl mx-auto pb-24 w-full"
+    >
+      <a
+        href="/"
+        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
       >
+        <ArrowLeft class="w-4 h-4" /> Back to Dashboard
+      </a>
+
+      <!-- Header Section -->
+      <div
+        class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4"
+      >
+        <input
+          type="text"
+          bind:value={character.name}
+          aria-label="Character Name"
+          class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
+          placeholder="Character Name"
+        />
         <div
-          class="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4"
+          class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
         >
-          <div>
-            <label for="main-prompt" class="text-xl font-bold block"
-              >Core Concept</label
-            >
-            <p class="text-sm text-muted-foreground">
-              Describe your character in a few sentences to serve as a base for
-              AI generation.
-            </p>
-          </div>
-
-          {#if generatingAll}
-            <button
-              onclick={cancelGeneration}
-              class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap"
-            >
-              <Loader2 class="w-4 h-4 animate-spin" /> Cancel Generation
-            </button>
-          {:else}
-            <button
-              onclick={generateAll}
-              disabled={!character.data.mainPrompt}
-              class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap"
-            >
-              <Sparkles class="w-4 h-4" /> Generate All Fields
-            </button>
-          {/if}
-        </div>
-        <textarea
-          id="main-prompt"
-          use:autoresize={character.data.mainPrompt}
-          bind:value={character.data.mainPrompt}
-          class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25"
-          placeholder="e.g. A grumpy but brilliant dwarven blacksmith..."
-        ></textarea>
-      </div>
-
-      <!-- Main Fields Section -->
-      <div class="space-y-8">
-        <div class="space-y-3">
-          <div
-            class="flex justify-between items-center border-b border-border pb-2"
+          <button
+            onclick={copyToClipboard}
+            class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
           >
-            <div>
-              <h3 class="text-2xl font-bold">Description</h3>
-              <p class="text-sm text-muted-foreground">
-                Main overview of the character's appearance and general vibe.
-              </p>
-            </div>
-            {#if activeGeneratingField === "Description"}
-              <button
-                onclick={cancelGeneration}
-                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-3 py-1.5 rounded-md hover:bg-destructive/10 transition-colors"
-                ><X class="w-4 h-4" /> Cancel</button
+            {#if copied}
+              <Check class="w-4 h-4" /> Copied!
+            {:else}
+              <Copy class="w-4 h-4" /> Export to Clipboard
+            {/if}
+          </button>
+          <div
+            class="flex items-center justify-center gap-2 px-4 py-2 bg-secondary rounded-md min-w-40"
+          >
+            {#if saveState === "waiting"}
+              <span
+                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+                >Unsaved changes...</span
+              >
+            {:else if saveState === "saving"}
+              <span
+                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+                ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
               >
             {:else}
-              <button
-                onclick={() =>
-                  enhanceField(
-                    "Description",
-                    character!.data.description,
-                    (v) => (character!.data.description = v),
-                  )}
-                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-3 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                ><Sparkles class="w-4 h-4" /> Enhance</button
+              <span
+                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
+                ><Save class="w-4 h-4" /> Auto-Saved</span
               >
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-12">
+        <!-- Main Prompt / Concept Section -->
+        <div
+          class="bg-card border-2 border-blue-500/20 rounded-xl p-4 sm:p-6 shadow-sm"
+        >
+          <div
+            class="flex flex-col md:flex-row justify-between md:items-center mb-4 gap-4"
+          >
+            <div>
+              <label for="main-prompt" class="text-xl font-bold block"
+                >Core Concept</label
+              >
+              <p class="text-sm text-muted-foreground">
+                Describe your character in a few sentences to serve as a base
+                for AI generation.
+              </p>
+            </div>
+
+            {#if generatingAll}
+              <button
+                onclick={cancelGeneration}
+                class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap"
+              >
+                <Loader2 class="w-4 h-4 animate-spin" /> Cancel Generation
+              </button>
+            {:else}
+              <button
+                onclick={generateAll}
+                disabled={!character.data.mainPrompt}
+                class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap"
+              >
+                <Sparkles class="w-4 h-4" /> Generate All Fields
+              </button>
             {/if}
           </div>
           <textarea
-            use:autoresize={character.data.description}
-            bind:value={character.data.description}
-            aria-label="Description"
-            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+            id="main-prompt"
+            use:autoresize={character.data.mainPrompt}
+            bind:value={character.data.mainPrompt}
+            class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25"
+            placeholder="e.g. A grumpy but brilliant dwarven blacksmith..."
           ></textarea>
         </div>
 
-        <!-- FIRST MESSAGES -->
-        <div class="space-y-4 pt-4">
-          <div
-            class="flex justify-between items-center border-b border-border pb-2"
-          >
-            <div>
-              <h3 class="text-2xl font-bold">First Messages</h3>
-              <p class="text-sm text-muted-foreground">
-                The initial greeting. Add alternatives for different starting
-                scenarios.
-              </p>
-            </div>
-            <button
-              onclick={addFirstMessage}
-              class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+        <!-- Main Fields Section -->
+        <div class="space-y-8">
+          <div class="space-y-3">
+            <div
+              class="flex justify-between items-center border-b border-border pb-2"
             >
-              <Plus class="w-4 h-4" /> Add
-            </button>
-          </div>
-
-          <div class="space-y-6">
-            {#each character.data.firstMessages as msg, i}
-              <div
-                class="bg-card border rounded-lg p-4 shadow-sm relative group"
-              >
-                <div class="flex justify-between items-center mb-3">
-                  <label
-                    for="first-msg-{i}"
-                    class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
-                    >{i === 0 ? "Main Greeting" : `Alternative ${i}`}</label
-                  >
-                  <div class="flex items-center gap-2">
-                    {#if activeGeneratingField === `First Message ${i}`}
-                      <button
-                        onclick={cancelGeneration}
-                        class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                        ><X class="w-3 h-3" /> Cancel</button
-                      >
-                    {:else}
-                      <button
-                        onclick={() =>
-                          enhanceField(
-                            `First Message ${i}`,
-                            msg,
-                            (v) => (character!.data.firstMessages[i] = v),
-                          )}
-                        class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                        ><Sparkles class="w-3 h-3" /> Enhance</button
-                      >
-                    {/if}
-                    {#if i > 0}
-                      <button
-                        onclick={() => removeFirstMessage(i)}
-                        class="p-1 text-muted-foreground hover:text-destructive transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
-                        ><Trash2 class="w-4 h-4" /></button
-                      >
-                    {/if}
-                  </div>
-                </div>
-                <textarea
-                  id="first-msg-{i}"
-                  use:autoresize={character.data.firstMessages[i]}
-                  bind:value={character.data.firstMessages[i]}
-                  class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
-                ></textarea>
+              <div>
+                <h3 class="text-2xl font-bold">Description</h3>
+                <p class="text-sm text-muted-foreground">
+                  Main overview of the character's appearance and general vibe.
+                </p>
               </div>
-            {/each}
-          </div>
-        </div>
-
-        <!-- EXAMPLE MESSAGES -->
-        <div class="space-y-4 pt-4">
-          <div
-            class="flex justify-between items-center border-b border-border pb-2"
-          >
-            <div>
-              <h3 class="text-2xl font-bold">Example Messages</h3>
-              <p class="text-sm text-muted-foreground">
-                Dialogues or monologues defining how the character speaks.
-              </p>
-            </div>
-            <button
-              onclick={addExampleMessage}
-              class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-            >
-              <Plus class="w-4 h-4" /> Add
-            </button>
-          </div>
-
-          <div class="space-y-4">
-            {#if character.data.exampleMessages.length === 0}
-              <div
-                class="text-center py-8 text-sm text-muted-foreground border rounded-lg border-dashed"
-              >
-                No examples added. Click the button above to add one.
-              </div>
-            {/if}
-
-            {#each character.data.exampleMessages as ex, i (ex.id)}
-              <div
-                class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4"
-              >
+              {#if activeGeneratingField === "Description"}
                 <button
-                  onclick={() => removeExampleMessage(ex.id)}
-                  class="absolute top-4 right-4 p-1 text-muted-foreground hover:text-destructive transition-colors"
-                  ><Trash2 class="w-4 h-4" /></button
+                  onclick={cancelGeneration}
+                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-3 py-1.5 rounded-md hover:bg-destructive/10 transition-colors"
+                  ><X class="w-4 h-4" /> Cancel</button
                 >
-                <div class="pr-8">
-                  <label
-                    for="ex-user-{i}"
-                    class="text-sm font-semibold mb-1 block text-muted-foreground"
-                    >User Prompt (Optional)</label
-                  >
-                  <textarea
-                    id="ex-user-{i}"
-                    use:autoresize={ex.user}
-                    bind:value={ex.user}
-                    class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15"
-                    placeholder="e.g. *I walk into the tavern and wave*"
-                  ></textarea>
-                </div>
-                <div>
-                  <div class="flex justify-between items-center mb-1">
+              {:else}
+                <button
+                  onclick={() =>
+                    enhanceField(
+                      "Description",
+                      character!.data.description,
+                      (v) => (character!.data.description = v),
+                    )}
+                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-3 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  ><Sparkles class="w-4 h-4" /> Enhance</button
+                >
+              {/if}
+            </div>
+            <textarea
+              use:autoresize={character.data.description}
+              bind:value={character.data.description}
+              aria-label="Description"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+            ></textarea>
+          </div>
+
+          <!-- FIRST MESSAGES -->
+          <div class="space-y-4 pt-4">
+            <div
+              class="flex justify-between items-center border-b border-border pb-2"
+            >
+              <div>
+                <h3 class="text-2xl font-bold">First Messages</h3>
+                <p class="text-sm text-muted-foreground">
+                  The initial greeting. Add alternatives for different starting
+                  scenarios.
+                </p>
+              </div>
+              <button
+                onclick={addFirstMessage}
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+              >
+                <Plus class="w-4 h-4" /> Add
+              </button>
+            </div>
+
+            <div class="space-y-6">
+              {#each character.data.firstMessages as msg, i}
+                <div
+                  class="bg-card border rounded-lg p-4 shadow-sm relative group"
+                >
+                  <div class="flex justify-between items-center mb-3">
                     <label
-                      for="ex-char-{i}"
-                      class="text-sm font-semibold text-foreground"
-                      >Character Response</label
+                      for="first-msg-{i}"
+                      class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
+                      >{i === 0 ? "Main Greeting" : `Alternative ${i}`}</label
                     >
-                    {#if activeGeneratingField === `Example Message ${i}`}
-                      <button
-                        onclick={cancelGeneration}
-                        class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                        ><X class="w-3 h-3" /> Cancel</button
-                      >
-                    {:else}
-                      <button
-                        onclick={() =>
-                          enhanceField(
-                            `Example Message ${i}`,
-                            ex.character,
-                            (v) => (ex.character = v),
-                          )}
-                        class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                        ><Sparkles class="w-3 h-3" /> Enhance</button
-                      >
-                    {/if}
+                    <div class="flex items-center gap-2">
+                      {#if activeGeneratingField === `First Message ${i}`}
+                        <button
+                          onclick={cancelGeneration}
+                          class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                          ><X class="w-3 h-3" /> Cancel</button
+                        >
+                      {:else}
+                        <button
+                          onclick={() =>
+                            enhanceField(
+                              `First Message ${i}`,
+                              msg,
+                              (v) => (character!.data.firstMessages[i] = v),
+                            )}
+                          class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                          ><Sparkles class="w-3 h-3" /> Enhance</button
+                        >
+                      {/if}
+                      {#if i > 0}
+                        <button
+                          onclick={() => removeFirstMessage(i)}
+                          class="p-1 text-muted-foreground hover:text-destructive transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                          ><Trash2 class="w-4 h-4" /></button
+                        >
+                      {/if}
+                    </div>
                   </div>
                   <textarea
-                    id="ex-char-{i}"
-                    use:autoresize={ex.character}
-                    bind:value={ex.character}
-                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25"
-                    placeholder="e.g. *glances up from his ale* 'What do you want?'"
+                    id="first-msg-{i}"
+                    use:autoresize={character.data.firstMessages[i]}
+                    bind:value={character.data.firstMessages[i]}
+                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
                   ></textarea>
                 </div>
+              {/each}
+            </div>
+          </div>
+
+          <!-- EXAMPLE MESSAGES -->
+          <div class="space-y-4 pt-4">
+            <div
+              class="flex justify-between items-center border-b border-border pb-2"
+            >
+              <div>
+                <h3 class="text-2xl font-bold">Example Messages</h3>
+                <p class="text-sm text-muted-foreground">
+                  Dialogues or monologues defining how the character speaks.
+                </p>
               </div>
-            {/each}
+              <button
+                onclick={addExampleMessage}
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+              >
+                <Plus class="w-4 h-4" /> Add
+              </button>
+            </div>
+
+            <div class="space-y-4">
+              {#if character.data.exampleMessages.length === 0}
+                <div
+                  class="text-center py-8 text-sm text-muted-foreground border rounded-lg border-dashed"
+                >
+                  No examples added. Click the button above to add one.
+                </div>
+              {/if}
+
+              {#each character.data.exampleMessages as ex, i (ex.id)}
+                <div
+                  class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4"
+                >
+                  <button
+                    onclick={() => removeExampleMessage(ex.id)}
+                    class="absolute top-4 right-4 p-1 text-muted-foreground hover:text-destructive transition-colors"
+                    ><Trash2 class="w-4 h-4" /></button
+                  >
+                  <div class="pr-8">
+                    <label
+                      for="ex-user-{i}"
+                      class="text-sm font-semibold mb-1 block text-muted-foreground"
+                      >User Prompt (Optional)</label
+                    >
+                    <textarea
+                      id="ex-user-{i}"
+                      use:autoresize={ex.user}
+                      bind:value={ex.user}
+                      class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15"
+                      placeholder="e.g. *I walk into the tavern and wave*"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <div class="flex justify-between items-center mb-1">
+                      <label
+                        for="ex-char-{i}"
+                        class="text-sm font-semibold text-foreground"
+                        >Character Response</label
+                      >
+                      {#if activeGeneratingField === `Example Message ${i}`}
+                        <button
+                          onclick={cancelGeneration}
+                          class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                          ><X class="w-3 h-3" /> Cancel</button
+                        >
+                      {:else}
+                        <button
+                          onclick={() =>
+                            enhanceField(
+                              `Example Message ${i}`,
+                              ex.character,
+                              (v) => (ex.character = v),
+                            )}
+                          class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                          ><Sparkles class="w-3 h-3" /> Enhance</button
+                        >
+                      {/if}
+                    </div>
+                    <textarea
+                      id="ex-char-{i}"
+                      use:autoresize={ex.character}
+                      bind:value={ex.character}
+                      class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25"
+                      placeholder="e.g. *glances up from his ale* 'What do you want?'"
+                    ></textarea>
+                  </div>
+                </div>
+              {/each}
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Subfields Section -->
-      <div class="space-y-6 pt-10 border-t border-border">
-        <h3
-          class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4"
-        >
-          Optional Subfields
-        </h3>
+        <!-- Subfields Section -->
+        <div class="space-y-6 pt-10 border-t border-border">
+          <h3
+            class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4"
+          >
+            Optional Subfields
+          </h3>
 
-        <div class="space-y-3">
-          <div class="flex justify-between items-center">
-            <label for="sub-personality" class="font-semibold text-lg"
-              >Personality</label
-            >
-            {#if activeGeneratingField === "Personality"}
-              <button
-                onclick={cancelGeneration}
-                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                ><X class="w-4 h-4" /> Cancel</button
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <label for="sub-personality" class="font-semibold text-lg"
+                >Personality</label
               >
-            {:else}
-              <button
-                onclick={() =>
-                  enhanceField(
-                    "Personality",
-                    character!.data.personality,
-                    (v) => (character!.data.personality = v),
-                  )}
-                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                ><Sparkles class="w-4 h-4" /> Enhance</button
-              >
-            {/if}
+              {#if activeGeneratingField === "Personality"}
+                <button
+                  onclick={cancelGeneration}
+                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  ><X class="w-4 h-4" /> Cancel</button
+                >
+              {:else}
+                <button
+                  onclick={() =>
+                    enhanceField(
+                      "Personality",
+                      character!.data.personality,
+                      (v) => (character!.data.personality = v),
+                    )}
+                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  ><Sparkles class="w-4 h-4" /> Enhance</button
+                >
+              {/if}
+            </div>
+            <textarea
+              id="sub-personality"
+              use:autoresize={character.data.personality}
+              bind:value={character.data.personality}
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
+            ></textarea>
           </div>
-          <textarea
-            id="sub-personality"
-            use:autoresize={character.data.personality}
-            bind:value={character.data.personality}
-            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
-          ></textarea>
-        </div>
 
-        <div class="space-y-3">
-          <div class="flex justify-between items-center">
-            <label for="sub-scenario" class="font-semibold text-lg"
-              >Scenario</label
-            >
-            {#if activeGeneratingField === "Scenario"}
-              <button
-                onclick={cancelGeneration}
-                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                ><X class="w-4 h-4" /> Cancel</button
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <label for="sub-scenario" class="font-semibold text-lg"
+                >Scenario</label
               >
-            {:else}
-              <button
-                onclick={() =>
-                  enhanceField(
-                    "Scenario",
-                    character!.data.scenario,
-                    (v) => (character!.data.scenario = v),
-                  )}
-                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                ><Sparkles class="w-4 h-4" /> Enhance</button
-              >
-            {/if}
+              {#if activeGeneratingField === "Scenario"}
+                <button
+                  onclick={cancelGeneration}
+                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  ><X class="w-4 h-4" /> Cancel</button
+                >
+              {:else}
+                <button
+                  onclick={() =>
+                    enhanceField(
+                      "Scenario",
+                      character!.data.scenario,
+                      (v) => (character!.data.scenario = v),
+                    )}
+                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  ><Sparkles class="w-4 h-4" /> Enhance</button
+                >
+              {/if}
+            </div>
+            <textarea
+              id="sub-scenario"
+              use:autoresize={character.data.scenario}
+              bind:value={character.data.scenario}
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
+            ></textarea>
           </div>
-          <textarea
-            id="sub-scenario"
-            use:autoresize={character.data.scenario}
-            bind:value={character.data.scenario}
-            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
-          ></textarea>
-        </div>
 
-        <div class="space-y-3">
-          <div class="flex justify-between items-center">
-            <label for="sub-backstory" class="font-semibold text-lg"
-              >Backstory</label
-            >
-            {#if activeGeneratingField === "Backstory"}
-              <button
-                onclick={cancelGeneration}
-                class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                ><X class="w-4 h-4" /> Cancel</button
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <label for="sub-backstory" class="font-semibold text-lg"
+                >Backstory</label
               >
-            {:else}
-              <button
-                onclick={() =>
-                  enhanceField(
-                    "Backstory",
-                    character!.data.backstory,
-                    (v) => (character!.data.backstory = v),
-                  )}
-                class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                ><Sparkles class="w-4 h-4" /> Enhance</button
-              >
-            {/if}
+              {#if activeGeneratingField === "Backstory"}
+                <button
+                  onclick={cancelGeneration}
+                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  ><X class="w-4 h-4" /> Cancel</button
+                >
+              {:else}
+                <button
+                  onclick={() =>
+                    enhanceField(
+                      "Backstory",
+                      character!.data.backstory,
+                      (v) => (character!.data.backstory = v),
+                    )}
+                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  ><Sparkles class="w-4 h-4" /> Enhance</button
+                >
+              {/if}
+            </div>
+            <textarea
+              id="sub-backstory"
+              use:autoresize={character.data.backstory}
+              bind:value={character.data.backstory}
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+            ></textarea>
           </div>
-          <textarea
-            id="sub-backstory"
-            use:autoresize={character.data.backstory}
-            bind:value={character.data.backstory}
-            class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
-          ></textarea>
         </div>
       </div>
     </div>
-  </div>
-{/if}
+  {/if}
+</div>

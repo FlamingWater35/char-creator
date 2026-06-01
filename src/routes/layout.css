@@ -79,3 +79,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes spin-fluent {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin {
+  animation: spin-fluent 1s linear infinite !important;
+}
+
+.page-transition-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.page-transition-grid > * {
+  grid-column: 1;
+  grid-row: 1;
+}

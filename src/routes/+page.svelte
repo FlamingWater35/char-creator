@@ -3,12 +3,15 @@
   import { db, type Character } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
-  import { Plus, Trash2, Edit } from "lucide-svelte";
+  import { Plus, Trash2, Edit, Loader2 } from "lucide-svelte";
+  import { fade } from "svelte/transition";
 
   let characters = $state<Character[]>([]);
+  let loading = $state(true);
 
   onMount(async () => {
     characters = await db.characters.orderBy("updatedAt").reverse().toArray();
+    loading = false;
   });
 
   async function createNew() {
@@ -60,8 +63,19 @@
   </button>
 </div>
 
-{#if characters.length === 0}
-  <div class="text-center py-20 border border-dashed rounded-lg bg-card px-4">
+{#if loading}
+  <div
+    in:fade={{ duration: 200 }}
+    class="flex flex-col items-center justify-center py-32 text-muted-foreground"
+  >
+    <Loader2 class="w-8 h-8 animate-spin mb-4" />
+    <p>Loading characters...</p>
+  </div>
+{:else if characters.length === 0}
+  <div
+    in:fade={{ duration: 200 }}
+    class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
+  >
     <h2 class="text-xl font-semibold mb-2">No characters found</h2>
     <p class="text-muted-foreground mb-6">
       Start building your first roleplay personality.
@@ -73,7 +87,10 @@
     >
   </div>
 {:else}
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  <div
+    in:fade={{ duration: 200 }}
+    class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+  >
     {#each characters as char (char.id)}
       <div
         class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow"
