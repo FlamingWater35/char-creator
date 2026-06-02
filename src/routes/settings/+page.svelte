@@ -28,6 +28,14 @@
   let showApiKey = $state(false);
   let advancedOpen = $state(false);
 
+  const providerDefaults: Record<string, string> = {
+    openrouter: "openai/gpt-chat-latest",
+    openai: "gpt-4o-mini",
+    deepseek: "deepseek-chat",
+    groq: "llama3-8b-8192",
+    together: "meta-llama/Llama-3-8b-chat-hf",
+  };
+
   let filteredModels = $derived(
     models.filter(
       (m) =>
@@ -37,25 +45,65 @@
   );
 
   let selectedModelName = $derived(
-    models.find((m) => m.id === settings.model)?.name || settings.model,
+    models.length === 0
+      ? "No models found (API Key or active connection required)"
+      : models.find((m) => m.id === settings.model)?.name ||
+          settings.model ||
+          "Select a model...",
   );
 
   onMount(async () => {
     settings.load();
-
     themePreference = localStorage.getItem("mode-watcher-mode") || "system";
+    await fetchModels();
+  });
 
+  async function fetchModels() {
     loadingModels = true;
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/models");
+      const res = await fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: settings.provider,
+          customBaseUrl: settings.customBaseUrl,
+          apiKey: settings.apiKey,
+        }),
+      });
       const data = await res.json();
-      models = data.data || [];
+      if (data.models && data.models.length > 0) {
+        models = data.models;
+
+        const preferredDefault = providerDefaults[settings.provider];
+        const preferredExists = preferredDefault
+          ? models.some((m) => m.id === preferredDefault)
+          : false;
+        const currentExists = models.some((m) => m.id === settings.model);
+
+        if (currentExists) {
+          settings.model = settings.model;
+        } else if (preferredExists && preferredDefault) {
+          settings.model = preferredDefault;
+        } else {
+          settings.model = models[0].id;
+        }
+      } else {
+        models = [];
+        settings.model = "";
+      }
     } catch (e) {
-      console.error("Failed to fetch models", e);
+      console.error("Failed to load models:", e);
+      models = [];
+      settings.model = "";
     } finally {
       loadingModels = false;
     }
-  });
+  }
+
+  function handleProviderChange() {
+    settings.model = "";
+    fetchModels();
+  }
 
   function updateTheme() {
     if (themePreference === "system") {
@@ -90,6 +138,7 @@
     </p>
   </div>
 
+  <!-- Appearance Section -->
   <section class="space-y-4">
     <div
       class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
@@ -131,6 +180,7 @@
     </div>
   </section>
 
+  <!-- Main Settings Panel -->
   <section class="space-y-4">
     <div
       class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
@@ -141,6 +191,7 @@
     <div
       class="bg-card border rounded-2xl shadow-sm overflow-hidden divide-y divide-border"
     >
+      <!-- AI Configuration -->
       <div class="p-6 space-y-6">
         <div class="flex items-center gap-3 mb-2">
           <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
@@ -149,17 +200,59 @@
           <h2 class="text-xl font-bold">AI Engine</h2>
         </div>
 
+        <!-- Provider Switcher -->
         <div class="flex flex-col gap-3">
-          <label for="apiKey" class="font-bold text-sm"
-            >OpenRouter API Key</label
+          <label class="font-bold text-sm" for="provider">API Provider</label>
+          <select
+            id="provider"
+            bind:value={settings.provider}
+            onchange={handleProviderChange}
+            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all"
           >
+            <option value="openrouter">OpenRouter (Default)</option>
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="groq">Groq</option>
+            <option value="together">Together AI</option>
+            <option value="custom"
+              >Custom / Local API (Ollama, LM Studio...)</option
+            >
+          </select>
+        </div>
+
+        <!-- Custom Base URL -->
+        {#if settings.provider === "custom"}
+          <div transition:slide class="flex flex-col gap-3">
+            <label for="customBaseUrl" class="font-bold text-sm"
+              >Custom API Base URL</label
+            >
+            <input
+              type="text"
+              id="customBaseUrl"
+              bind:value={settings.customBaseUrl}
+              class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all"
+              placeholder="e.g. http://localhost:11434/v1"
+            />
+            <p class="text-xs text-muted-foreground">
+              Requires an OpenAI-compatible endpoint structure.
+            </p>
+          </div>
+        {/if}
+
+        <!-- API Key -->
+        <div class="flex flex-col gap-3">
+          <label for="apiKey" class="font-bold text-sm">
+            {settings.provider === "custom" ? "API Key (Optional)" : "API Key"}
+          </label>
           <div class="relative flex items-center">
             <input
               type={showApiKey ? "text" : "password"}
               id="apiKey"
               bind:value={settings.apiKey}
               class="border rounded-xl pl-4 pr-12 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all"
-              placeholder="sk-or-v1-..."
+              placeholder={settings.provider === "custom"
+                ? "Optional key"
+                : "sk-..."}
             />
             <button
               type="button"
@@ -176,8 +269,19 @@
           </div>
         </div>
 
+        <!-- Model Selector with Refresh Trigger -->
         <div class="flex flex-col gap-3">
-          <div id="model-label" class="font-bold text-sm">Active Model</div>
+          <div class="flex justify-between items-center">
+            <div id="model-label" class="font-bold text-sm">Active Model</div>
+            <button
+              type="button"
+              onclick={fetchModels}
+              disabled={loadingModels}
+              class="text-xs text-blue-500 hover:text-blue-600 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            >
+              Refresh List
+            </button>
+          </div>
           {#if loadingModels}
             <div
               class="flex items-center gap-3 py-3 px-4 bg-muted rounded-xl animate-pulse"
@@ -193,14 +297,15 @@
                 aria-labelledby="model-label"
                 aria-haspopup="listbox"
                 aria-expanded={dropdownOpen}
+                disabled={models.length === 0}
                 onclick={() => (dropdownOpen = !dropdownOpen)}
-                class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer"
+                class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span class="truncate font-medium">{selectedModelName}</span>
                 <ChevronDown class="w-4 h-4 opacity-50 shrink-0" />
               </button>
 
-              {#if dropdownOpen}
+              {#if dropdownOpen && models.length > 0}
                 <button
                   type="button"
                   class="fixed inset-0 z-40"
@@ -248,6 +353,7 @@
           {/if}
         </div>
 
+        <!-- Parameters -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
           <div class="space-y-4">
             <div class="flex justify-between">
@@ -288,6 +394,7 @@
           </div>
         </div>
 
+        <!-- Advanced section Accordion -->
         <div class="bg-secondary/30 rounded-xl px-4 py-2">
           <button
             type="button"
@@ -359,6 +466,7 @@
         </div>
       </div>
 
+      <!-- Toggles Section -->
       <div class="p-6 bg-muted/10 space-y-6">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-purple-500/10 text-purple-500 rounded-lg">

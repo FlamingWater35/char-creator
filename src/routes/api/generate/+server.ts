@@ -2,19 +2,28 @@ import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
 export const POST = async ({ request, url }: RequestEvent) => {
-  const { prompt, model, apiKey, system, temperature, frequencyPenalty, presencePenalty, topP, maxTokens } = await request.json();
+  const {
+    prompt, model, apiKey, system, temperature,
+    frequencyPenalty, presencePenalty, topP, maxTokens,
+    provider, customBaseUrl
+  } = await request.json();
 
-  if (!apiKey) {
+  if (!apiKey && provider !== 'custom') {
     return json({ error: 'API Key is missing.' }, { status: 401 });
   }
 
-  const siteUrl = request.headers.get('origin') || url.origin || 'https://char-creator-one.vercel.app/';
+  let baseURL = 'https://openrouter.ai/api/v1';
+  if (provider === 'openai') baseURL = 'https://api.openai.com/v1';
+  else if (provider === 'deepseek') baseURL = 'https://api.deepseek.com/v1';
+  else if (provider === 'groq') baseURL = 'https://api.groq.com/openai/v1';
+  else if (provider === 'together') baseURL = 'https://api.together.xyz/v1';
+  else if (provider === 'custom') baseURL = customBaseUrl || 'http://localhost:11434/v1';
 
   const client = new OpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
-    apiKey: apiKey,
+    baseURL: baseURL,
+    apiKey: apiKey || 'no-key',
     defaultHeaders: {
-      'HTTP-Referer': siteUrl,
+      'HTTP-Referer': request.headers.get('origin') || url.origin || 'https://char-creator-one.vercel.app/',
       'X-Title': 'Char Creator'
     }
   });

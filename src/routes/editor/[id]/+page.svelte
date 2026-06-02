@@ -148,9 +148,9 @@
   }
 
   async function callAI(prompt: string, system?: string) {
-    if (!settings.apiKey) {
+    if (!settings.apiKey && settings.provider !== "custom") {
       dialogs.alert(
-        "Please set your OpenRouter API key in settings first.",
+        "Please set your API key in settings first.",
         "Missing API Key",
       );
       return null;
@@ -174,6 +174,8 @@
           presencePenalty: settings.presencePenalty,
           topP: settings.topP,
           maxTokens: settings.maxTokens,
+          provider: settings.provider,
+          customBaseUrl: settings.customBaseUrl,
         }),
       });
 
