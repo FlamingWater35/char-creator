@@ -1,3 +1,7 @@
+/**
+ * App-wide settings and parameters for API providers, AI generation toggles,
+ * and card export specifications. Saves instantly to localStorage on changes.
+ */
 class Settings {
   apiKey = $state('');
   model = $state('openai/gpt-chat-latest');
@@ -31,62 +35,80 @@ class Settings {
     this.load();
   }
 
+  /**
+   * Safe-reads configuration attributes from local storage.
+   * Defends against private browsing limitations or disabled cookies.
+   */
   load() {
     if (typeof window !== 'undefined') {
-      this.apiKey = localStorage.getItem('or_key') || '';
-      this.model = localStorage.getItem('or_model') || 'openai/gpt-chat-latest';
-      this.temperature = parseFloat(localStorage.getItem('or_temp') || '0.8');
-      this.frequencyPenalty = parseFloat(localStorage.getItem('or_freq') || '0');
-      this.presencePenalty = parseFloat(localStorage.getItem('or_pres') || '0');
+      try {
+        this.apiKey = localStorage.getItem('or_key') || '';
+        this.model = localStorage.getItem('or_model') || 'openai/gpt-chat-latest';
+        this.temperature = parseFloat(localStorage.getItem('or_temp') || '0.8');
+        this.frequencyPenalty = parseFloat(localStorage.getItem('or_freq') || '0');
+        this.presencePenalty = parseFloat(localStorage.getItem('or_pres') || '0');
 
-      this.topP = parseFloat(localStorage.getItem('or_top_p') || '1.0');
-      this.maxTokens = parseInt(localStorage.getItem('or_max_tokens') || '8192', 10);
+        this.topP = parseFloat(localStorage.getItem('or_top_p') || '1.0');
+        this.maxTokens = parseInt(localStorage.getItem('or_max_tokens') || '8192', 10);
 
-      this.provider = localStorage.getItem('or_provider') || 'openrouter';
-      this.customBaseUrl = localStorage.getItem('or_custom_url') || '';
+        this.provider = localStorage.getItem('or_provider') || 'openrouter';
+        this.customBaseUrl = localStorage.getItem('or_custom_url') || '';
 
-      this.genName = localStorage.getItem('or_gen_name') !== 'false';
-      this.genDescription = localStorage.getItem('or_gen_desc') !== 'false';
-      this.genPersonality = localStorage.getItem('or_gen_pers') !== 'false';
-      this.genScenario = localStorage.getItem('or_gen_scen') !== 'false';
-      this.genBackstory = localStorage.getItem('or_gen_back') !== 'false';
-      this.genFirstMessages = localStorage.getItem('or_gen_fmsg') !== 'false';
-      this.genExampleMessages = localStorage.getItem('or_gen_emsg') !== 'false';
-      this.genRelatedCharacters = localStorage.getItem('or_gen_rchar') === 'true';
+        this.genName = localStorage.getItem('or_gen_name') !== 'false';
+        this.genDescription = localStorage.getItem('or_gen_desc') !== 'false';
+        this.genPersonality = localStorage.getItem('or_gen_pers') !== 'false';
+        this.genScenario = localStorage.getItem('or_gen_scen') !== 'false';
+        this.genBackstory = localStorage.getItem('or_gen_back') !== 'false';
+        this.genFirstMessages = localStorage.getItem('or_gen_fmsg') !== 'false';
+        this.genExampleMessages = localStorage.getItem('or_gen_emsg') !== 'false';
+        this.genRelatedCharacters = localStorage.getItem('or_gen_rchar') === 'true';
 
-      this.mergeTraitsOnExport = localStorage.getItem('or_merge_export') === 'true';
-      this.exportVersion = (localStorage.getItem('or_export_version') as 'v2' | 'v3') || 'v3';
+        this.mergeTraitsOnExport = localStorage.getItem('or_merge_export') === 'true';
+        this.exportVersion = (localStorage.getItem('or_export_version') as 'v2' | 'v3') || 'v3';
+      } catch (e) {
+        console.warn("Could not read configuration states from localStorage:", e);
+      }
     }
   }
 
+  /**
+   * Safe-writes current configuration attributes to local storage.
+   */
   save() {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('or_key', this.apiKey);
-      localStorage.setItem('or_model', this.model);
-      localStorage.setItem('or_temp', this.temperature.toString());
-      localStorage.setItem('or_freq', this.frequencyPenalty.toString());
-      localStorage.setItem('or_pres', this.presencePenalty.toString());
+      try {
+        localStorage.setItem('or_key', this.apiKey);
+        localStorage.setItem('or_model', this.model);
+        localStorage.setItem('or_temp', this.temperature.toString());
+        localStorage.setItem('or_freq', this.frequencyPenalty.toString());
+        localStorage.setItem('or_pres', this.presencePenalty.toString());
 
-      localStorage.setItem('or_top_p', this.topP.toString());
-      localStorage.setItem('or_max_tokens', this.maxTokens.toString());
+        localStorage.setItem('or_top_p', this.topP.toString());
+        localStorage.setItem('or_max_tokens', this.maxTokens.toString());
 
-      localStorage.setItem('or_provider', this.provider);
-      localStorage.setItem('or_custom_url', this.customBaseUrl);
+        localStorage.setItem('or_provider', this.provider);
+        localStorage.setItem('or_custom_url', this.customBaseUrl);
 
-      localStorage.setItem('or_gen_name', this.genName ? 'true' : 'false');
-      localStorage.setItem('or_gen_desc', this.genDescription ? 'true' : 'false');
-      localStorage.setItem('or_gen_pers', this.genPersonality ? 'true' : 'false');
-      localStorage.setItem('or_gen_scen', this.genScenario ? 'true' : 'false');
-      localStorage.setItem('or_gen_back', this.genBackstory ? 'true' : 'false');
-      localStorage.setItem('or_gen_fmsg', this.genFirstMessages ? 'true' : 'false');
-      localStorage.setItem('or_gen_emsg', this.genExampleMessages ? 'true' : 'false');
-      localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
+        localStorage.setItem('or_gen_name', this.genName ? 'true' : 'false');
+        localStorage.setItem('or_gen_desc', this.genDescription ? 'true' : 'false');
+        localStorage.setItem('or_gen_pers', this.genPersonality ? 'true' : 'false');
+        localStorage.setItem('or_gen_scen', this.genScenario ? 'true' : 'false');
+        localStorage.setItem('or_gen_back', this.genBackstory ? 'true' : 'false');
+        localStorage.setItem('or_gen_fmsg', this.genFirstMessages ? 'true' : 'false');
+        localStorage.setItem('or_gen_emsg', this.genExampleMessages ? 'true' : 'false');
+        localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
 
-      localStorage.setItem('or_merge_export', this.mergeTraitsOnExport ? 'true' : 'false');
-      localStorage.setItem('or_export_version', this.exportVersion);
+        localStorage.setItem('or_merge_export', this.mergeTraitsOnExport ? 'true' : 'false');
+        localStorage.setItem('or_export_version', this.exportVersion);
+      } catch (e) {
+        console.warn("Could not save configuration states to localStorage:", e);
+      }
     }
   }
 
+  /**
+   * Restores settings to their original factory defaults.
+   */
   resetToDefaults() {
     this.apiKey = '';
     this.model = 'openai/gpt-chat-latest';

@@ -2,6 +2,7 @@
   import { autoresize } from "$lib/autoresize";
   import { Sparkles, X } from "@lucide/svelte";
 
+  // Binds optional metadata text variables directly to top-level editor states
   let {
     personality = $bindable(""),
     scenario = $bindable(""),
@@ -27,13 +28,15 @@
   } = $props();
 </script>
 
+<!-- Optional Metadata Subfields Block Container -->
 <div class="space-y-6 pt-10 border-t border-border">
   <h3
-    class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4"
+    class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4 animate-fade-in"
   >
     Optional Subfields
   </h3>
 
+  <!-- Personality Definition Card -->
   <div class="space-y-3">
     <div class="flex justify-between items-center">
       <label for="sub-personality" class="font-semibold text-lg"
@@ -62,10 +65,12 @@
       use:autoresize={personality}
       bind:value={personality}
       class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50"
+      placeholder="e.g. Wise, patient, speaks in deliberate medieval riddles..."
       disabled={generatingAll || activeGeneratingField === "Personality"}
     ></textarea>
   </div>
 
+  <!-- Scenario Setup Card -->
   <div class="space-y-3">
     <div class="flex justify-between items-center">
       <label for="sub-scenario" class="font-semibold text-lg">Scenario</label>
@@ -91,10 +96,12 @@
       use:autoresize={scenario}
       bind:value={scenario}
       class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50"
+      placeholder="e.g. The user discovers Merlin's ancient stone tower deep in the dark forests of Camelot..."
       disabled={generatingAll || activeGeneratingField === "Scenario"}
     ></textarea>
   </div>
 
+  <!-- Backstory Biography Card -->
   <div class="space-y-3">
     <div class="flex justify-between items-center">
       <label for="sub-backstory" class="font-semibold text-lg">Backstory</label>
@@ -121,10 +128,12 @@
       use:autoresize={backstory}
       bind:value={backstory}
       class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50"
+      placeholder="e.g. Born of a mortal mother and an incubus, Merlin holds immense magical lineage..."
       disabled={generatingAll || activeGeneratingField === "Backstory"}
     ></textarea>
   </div>
 
+  <!-- Associated Related Characters Card -->
   <div class="space-y-3">
     <div class="flex justify-between items-center">
       <label for="sub-relatedCharacters" class="font-semibold text-lg"
@@ -157,7 +166,7 @@
       use:autoresize={relatedCharacters}
       bind:value={relatedCharacters}
       class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50"
-      placeholder="Describe relations to other characters..."
+      placeholder="e.g. King Arthur (Mentee / Sovereign), Nimue (Lady of the Lake / Companion)..."
       disabled={generatingAll || activeGeneratingField === "Related Characters"}
     ></textarea>
   </div>

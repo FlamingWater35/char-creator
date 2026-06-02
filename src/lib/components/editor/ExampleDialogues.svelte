@@ -3,6 +3,7 @@
   import { autoresize } from "$lib/autoresize";
   import { Plus, Trash2, Sparkles, X } from "@lucide/svelte";
 
+  // Bidirectional runes binding dialogue examples arrays with parent states
   let {
     exampleMessages = $bindable([]),
     generatingAll = false,
@@ -21,6 +22,7 @@
     oncancel: () => void;
   } = $props();
 
+  // Appends a blank interactive dialogue trigger card
   function addExampleMessage() {
     exampleMessages = [
       ...exampleMessages,
@@ -28,11 +30,13 @@
     ];
   }
 
+  // Wipes an individual dialogue record from the list
   function removeExampleMessage(id: string) {
     exampleMessages = exampleMessages.filter((m) => m.id !== id);
   }
 </script>
 
+<!-- Examples Manager Card -->
 <div class="space-y-4 pt-4">
   <div class="flex justify-between items-center border-b border-border pb-2">
     <div>
@@ -53,7 +57,7 @@
   <div class="space-y-4">
     {#if exampleMessages.length === 0}
       <div
-        class="text-center py-8 text-sm text-muted-foreground border rounded-lg border-dashed"
+        class="text-center py-8 text-sm text-muted-foreground border rounded-lg border-dashed bg-secondary/5"
       >
         No examples added. Click the button above to add one.
       </div>
@@ -67,8 +71,11 @@
           onclick={() => removeExampleMessage(ex.id)}
           disabled={generatingAll || activeGeneratingField !== null}
           class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50"
-          ><Trash2 class="w-4 h-4" /></button
+          aria-label="Remove Dialogue Example"
         >
+          <Trash2 class="w-4 h-4" />
+        </button>
+
         <div class="pr-8">
           <label
             for="ex-user-{i}"
@@ -85,6 +92,7 @@
               activeGeneratingField === `Example Message ${i}`}
           ></textarea>
         </div>
+
         <div>
           <div class="flex justify-between items-center mb-1">
             <label

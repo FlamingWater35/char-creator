@@ -2,6 +2,7 @@
   import { autoresize } from "$lib/autoresize";
   import { Plus, Trash2, Sparkles, X } from "@lucide/svelte";
 
+  // Bidirectional runes binding alternate greetings arrays with parent states
   let {
     firstMessages = $bindable([""]),
     generatingAll = false,
@@ -20,15 +21,18 @@
     oncancel: () => void;
   } = $props();
 
+  // Appends a blank alternate greeting textbox card
   function addFirstMessage() {
     firstMessages = [...firstMessages, ""];
   }
 
+  // Wipes an individual greeting from the selection list
   function removeFirstMessage(index: number) {
     firstMessages = firstMessages.filter((_, i) => i !== index);
   }
 </script>
 
+<!-- Greetings Manager Panel -->
 <div class="space-y-4 pt-4">
   <div class="flex justify-between items-center border-b border-border pb-2">
     <div>
@@ -42,7 +46,7 @@
       disabled={generatingAll || activeGeneratingField !== null}
       class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
     >
-      <Plus class="w-4 h-4" /> Add
+      <Plus class="w-4 h-4" /> Add Alternate
     </button>
   </div>
 
@@ -82,6 +86,7 @@
                 onclick={() => removeFirstMessage(i)}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50"
+                aria-label="Remove Greeting Card"
                 ><Trash2 class="w-4 h-4" /></button
               >
             {/if}

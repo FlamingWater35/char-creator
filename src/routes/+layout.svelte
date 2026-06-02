@@ -11,6 +11,7 @@
 
   let { children } = $props();
 
+  // Highlight navigation links if they match the active pathname prefix
   const isActive = (path: string) => {
     if (path === "/") return $page.url.pathname === "/";
     return $page.url.pathname.startsWith(path);
@@ -26,10 +27,12 @@
 <GlobalDialogs />
 
 <div class="min-h-screen flex flex-col bg-background">
+  <!-- Sticky Blurred Navigation Header -->
   <header
     class="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-md"
   >
     <div class="container mx-auto px-4 h-16 flex items-center justify-between">
+      <!-- Brand Logo -->
       <a
         href="/"
         class="flex items-center gap-2.5 group transition-transform active:scale-95"
@@ -45,6 +48,7 @@
         </span>
       </a>
 
+      <!-- Page Links Switcher -->
       <nav
         class="flex items-center gap-1 sm:gap-3 bg-secondary/50 p-1.5 rounded-2xl border border-border/50"
       >
@@ -87,6 +91,7 @@
         </a>
       </nav>
 
+      <!-- App version tag -->
       <div class="flex items-center gap-3">
         <div class="hidden md:flex flex-col items-end">
           <span
@@ -99,6 +104,7 @@
     </div>
   </header>
 
+  <!-- Main Grid Page Layout Slot -->
   <main
     class="flex-1 container mx-auto px-4 py-6 sm:py-10 grid grid-cols-1 grid-rows-1"
   >
