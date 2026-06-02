@@ -9,13 +9,28 @@
   } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
-  import { Plus, Trash2, Edit, Loader2, FileUp } from "@lucide/svelte";
+  import {
+    Plus,
+    Trash2,
+    Edit,
+    Loader2,
+    FileUp,
+    Search,
+    X,
+  } from "@lucide/svelte";
   import { fade } from "svelte/transition";
-  import { extractCharacterCardMetadata } from "$lib/png";
+  import { extractCharacterCardMetadata, generateThumbnail } from "$lib/png";
 
   let characters = $state<Character[]>([]);
+  let searchQuery = $state("");
   let loading = $state(true);
   let fileInputImport = $state<HTMLInputElement>();
+
+  let filteredCharacters = $derived(
+    characters.filter((c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  );
 
   onMount(async () => {
     characters = await db.characters.orderBy("updatedAt").reverse().toArray();
@@ -38,8 +53,7 @@
         relatedCharacters: "",
         firstMessages: [""],
         exampleMessages: [],
-        image: null,
-        assets: [],
+        thumbnail: null,
         characterBook: {
           name: "",
           description: "",
@@ -58,6 +72,8 @@
     );
     if (confirmed) {
       await db.characters.delete(id);
+      await db.characterImages.delete(id);
+      await db.characterAssets.where("characterId").equals(id).delete();
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
     }
   }
@@ -149,7 +165,6 @@
       }
 
       const data = parsed.data || parsed;
-
       const name = data.name || "Imported Character";
 
       let mainPrompt = "";
@@ -158,7 +173,6 @@
       }
 
       let fullDesc = data.description || "";
-
       let personality = (data.personality || "").trim();
       let scenario = (data.scenario || "").trim();
       let backstory = "";
@@ -189,7 +203,6 @@
       }
 
       const description = fullDesc.trim();
-
       if (!mainPrompt) {
         mainPrompt = description.substring(0, 150) || name;
       }
@@ -199,6 +212,9 @@
         reader.onload = (event) => resolve(event.target?.result as string);
         reader.readAsDataURL(file);
       });
+      const thumbnail = base64Image
+        ? await generateThumbnail(base64Image)
+        : null;
 
       const firstMessages = [data.first_mes || ""];
       if (Array.isArray(data.alternate_greetings)) {
@@ -207,8 +223,7 @@
 
       const exampleMessages = parseExampleMessages(data.mes_example);
 
-      let assets: CharacterAsset[] = [];
-
+      let assets: any[] = [];
       if (Array.isArray(data.assets)) {
         assets = data.assets
           .map((asset: any) => ({
@@ -221,7 +236,7 @@
             uri: asset.uri || "",
             ext: asset.ext || "png",
           }))
-          .filter((asset: CharacterAsset) => asset.uri);
+          .filter((asset: any) => asset.uri);
       } else if (data.extensions?.assets) {
         const v2Assets = data.extensions.assets;
         if (Array.isArray(v2Assets)) {
@@ -236,7 +251,7 @@
               uri: asset.uri || "",
               ext: asset.ext || "png",
             }))
-            .filter((asset: CharacterAsset) => asset.uri);
+            .filter((asset: any) => asset.uri);
         } else if (typeof v2Assets === "object") {
           Object.entries(v2Assets).forEach(([key, val]) => {
             if (typeof val === "string" && val.startsWith("data:")) {
@@ -268,7 +283,6 @@
         description: "",
         entries: [],
       };
-
       if (data.character_book && typeof data.character_book === "object") {
         const cb = data.character_book;
         characterBook = {
@@ -303,8 +317,9 @@
         worldInfo = JSON.stringify(data.extensions.world_info);
       }
 
+      const id = crypto.randomUUID();
       const newChar: Character = {
-        id: crypto.randomUUID(),
+        id,
         name,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -317,14 +332,22 @@
           relatedCharacters,
           firstMessages,
           exampleMessages,
-          image: base64Image || null,
-          assets,
+          thumbnail,
           characterBook,
           worldInfo,
         },
       };
 
       await db.characters.add(newChar);
+      if (base64Image) {
+        await db.characterImages.put({ id, image: base64Image });
+      }
+      if (assets.length > 0) {
+        await db.characterAssets.bulkPut(
+          assets.map((a) => ({ ...a, characterId: id })),
+        );
+      }
+
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
       await dialogs.alert(
         `Character "${name}" imported successfully with ${assets.length} extra media assets and ${characterBook.entries.length} Lorebook entries!`,
@@ -357,18 +380,38 @@
       onclick={() => fileInputImport?.click()}
       class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer"
     >
-      <FileUp class="w-4 h-4" />
-      Import PNG Card
+      <FileUp class="w-4 h-4" /> Import PNG Card
     </button>
     <button
       onclick={createNew}
       class="flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full sm:w-auto cursor-pointer"
     >
-      <Plus class="w-4 h-4" />
-      Create New Character
+      <Plus class="w-4 h-4" /> Create New Character
     </button>
   </div>
 </div>
+
+{#if characters.length > 0}
+  <div
+    class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
+  >
+    <Search class="w-5 h-5 text-muted-foreground mr-3" />
+    <input
+      type="text"
+      bind:value={searchQuery}
+      placeholder="Search characters by name..."
+      class="w-full bg-transparent focus:outline-none text-sm font-medium"
+    />
+    {#if searchQuery}
+      <button
+        onclick={() => (searchQuery = "")}
+        class="p-1 text-muted-foreground hover:text-foreground"
+      >
+        <X class="w-4 h-4" />
+      </button>
+    {/if}
+  </div>
+{/if}
 
 <input
   type="file"
@@ -410,12 +453,19 @@
       >
     </div>
   </div>
+{:else if filteredCharacters.length === 0}
+  <div
+    in:fade={{ duration: 200 }}
+    class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
+  >
+    <p class="text-muted-foreground">No characters match your search query.</p>
+  </div>
 {:else}
   <div
     in:fade={{ duration: 200 }}
     class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
   >
-    {#each characters as char (char.id)}
+    {#each filteredCharacters as char (char.id)}
       <div
         class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow"
       >
@@ -424,9 +474,9 @@
             <div
               class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center"
             >
-              {#if char.data.image}
+              {#if char.data.thumbnail}
                 <img
-                  src={char.data.image}
+                  src={char.data.thumbnail}
                   alt={char.name}
                   class="w-full h-full object-cover"
                 />

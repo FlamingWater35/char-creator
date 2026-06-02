@@ -5,10 +5,12 @@
 
   let {
     assets = $bindable([]),
+    characterId,
     generatingAll = false,
     activeGeneratingField = null,
   }: {
     assets: CharacterAsset[];
+    characterId: string;
     generatingAll: boolean;
     activeGeneratingField: string | null;
   } = $props();
@@ -33,6 +35,7 @@
           ...assets,
           {
             id: crypto.randomUUID(),
+            characterId,
             name,
             type: "image",
             uri,

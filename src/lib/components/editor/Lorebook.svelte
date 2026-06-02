@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CharacterBook } from "$lib/db";
   import { autoresize } from "$lib/autoresize";
+  import { slide } from "svelte/transition";
   import {
     Plus,
     Trash2,
@@ -9,6 +10,8 @@
     Square,
     X,
     FileText,
+    ChevronDown,
+    ChevronUp,
   } from "@lucide/svelte";
 
   let {
@@ -22,6 +25,8 @@
     generatingAll: boolean;
     activeGeneratingField: string | null;
   } = $props();
+
+  let expandedEntries = $state<Record<string, boolean>>({});
 
   let lorebookSearchQuery = $state("");
   let filteredLorebookEntries = $derived(
@@ -40,10 +45,11 @@
   );
 
   function addLorebookEntry() {
+    const newId = crypto.randomUUID();
     characterBook.entries = [
       ...characterBook.entries,
       {
-        id: crypto.randomUUID(),
+        id: newId,
         keys: [],
         secondary_keys: [],
         content: "",
@@ -53,10 +59,15 @@
         constant: false,
       },
     ];
+    expandedEntries[newId] = true;
   }
 
   function removeLorebookEntry(id: string) {
     characterBook.entries = characterBook.entries.filter((e) => e.id !== id);
+  }
+
+  function toggleExpand(id: string) {
+    expandedEntries[id] = !expandedEntries[id];
   }
 </script>
 
@@ -112,7 +123,9 @@
     />
   </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
+  <div
+    class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-border"
+  >
     <div class="space-y-1">
       <label
         for="lorebook-title"
@@ -140,15 +153,14 @@
         bind:value={characterBook.description}
         disabled={generatingAll || activeGeneratingField !== null}
         class="w-full border rounded-xl px-4 py-2.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-        placeholder="e.g. Merlin's collection of ancient Camelot spells, incantations, and potion recipes"
+        placeholder="e.g. Merlin's collection of ancient Camelot spells"
       />
     </div>
   </div>
 
-  <!-- Lore Entries Live filter search -->
   {#if characterBook.entries.length > 0}
     <div
-      class="relative flex items-center mb-4 bg-secondary/10 border rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500"
+      class="relative flex items-center bg-secondary/10 border rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500"
     >
       <input
         type="text"
@@ -170,7 +182,7 @@
   <div class="space-y-4">
     {#if characterBook.entries.length === 0}
       <div
-        class="text-center py-10 border rounded-xl border-dashed text-sm text-muted-foreground bg-secondary/10 animate-pulse"
+        class="text-center py-10 border rounded-xl border-dashed text-sm text-muted-foreground bg-secondary/10"
       >
         No embedded lore entries. Click "Add Memory Entry" or link an external
         world file above.
@@ -184,151 +196,215 @@
     {:else}
       {#each filteredLorebookEntries as entry, idx (entry.id)}
         <div
-          class="border rounded-xl p-4 sm:p-5 bg-secondary/10 space-y-4 shadow-sm relative group"
+          class="border rounded-xl bg-secondary/10 shadow-sm relative group overflow-hidden"
         >
+          <!-- Collapsible Header -->
           <div
-            class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b pb-3 border-border/50"
+            class="w-full text-left p-4 sm:p-5 flex justify-between items-center gap-4 hover:bg-secondary/20 transition-colors cursor-pointer"
+            role="button"
+            tabindex="0"
+            onkeydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") toggleExpand(entry.id);
+            }}
+            onclick={() => toggleExpand(entry.id)}
           >
-            <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-3 overflow-hidden">
               <span
-                class="text-xs font-bold text-muted-foreground uppercase tracking-widest"
+                class="text-xs font-bold text-muted-foreground uppercase tracking-widest shrink-0"
               >
-                Memory Entry #{idx + 1}
+                Entry #{idx + 1}
               </span>
-              <!-- Enabled Toggle -->
-              <button
-                onclick={() => (entry.enabled = !entry.enabled)}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.enabled
-                  ? 'text-blue-500'
-                  : 'text-muted-foreground'}"
-              >
-                {#if entry.enabled}
-                  <CheckSquare class="w-4 h-4" /> Trigger Active
-                {:else}
-                  <Square class="w-4 h-4" /> Trigger Bypassed
-                {/if}
-              </button>
 
-              <!-- Constant Toggle -->
-              <button
-                onclick={() => (entry.constant = !entry.constant)}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.constant
-                  ? 'text-purple-500'
-                  : 'text-muted-foreground'}"
+              {#if !entry.enabled}
+                <span
+                  class="bg-destructive/10 text-destructive px-2 py-0.5 rounded text-[10px] font-bold border border-destructive/20 shrink-0"
+                  >Disabled</span
+                >
+              {/if}
+
+              {#if entry.constant}
+                <span
+                  class="bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded text-[10px] font-bold border border-purple-500/20 shrink-0"
+                  >Constant</span
+                >
+              {/if}
+
+              <div
+                class="flex flex-wrap gap-1.5 items-center max-w-full overflow-hidden"
               >
-                {#if entry.constant}
-                  <CheckSquare class="w-4 h-4" /> Always Injected
-                {:else}
-                  <Square class="w-4 h-4" /> Keyword Gated
+                {#each entry.keys as key}
+                  <span
+                    class="bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-500/20 truncate"
+                    >{key}</span
+                  >
+                {/each}
+                {#each entry.secondary_keys || [] as key}
+                  <span
+                    class="bg-primary/10 text-primary/70 px-2 py-0.5 rounded text-[10px] font-bold border border-border truncate"
+                    >{key}</span
+                  >
+                {/each}
+                {#if entry.keys.length === 0}
+                  <span class="text-xs text-muted-foreground italic truncate"
+                    >No triggers defined</span
+                  >
                 {/if}
-              </button>
+              </div>
             </div>
 
-            <button
-              onclick={() => removeLorebookEntry(entry.id)}
-              disabled={generatingAll || activeGeneratingField !== null}
-              class="sm:opacity-0 group-hover:opacity-100 p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-all self-end sm:self-auto cursor-pointer"
-              aria-label="Remove Lore Entry"
-            >
-              <Trash2 class="w-4 h-4" />
-            </button>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1">
-              <label
-                for="entry-keys-{idx}"
-                class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Primary Keyword Triggers (Comma-separated)</label
-              >
-              <input
-                id="entry-keys-{idx}"
-                type="text"
-                value={entry.keys.join(", ")}
-                oninput={(e) => {
-                  entry.keys = e.currentTarget.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                onclick={(e) => {
+                  e.stopPropagation();
+                  removeLorebookEntry(entry.id);
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
-                class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. Fireball, spell casting, magic incantation"
-              />
-            </div>
-            <div class="space-y-1">
-              <label
-                for="entry-sec-keys-{idx}"
-                class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Secondary Co-Triggers (Requires both to trigger)</label
+                class="sm:opacity-0 group-hover:opacity-100 p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-all cursor-pointer"
+                aria-label="Remove Lore Entry"
               >
-              <input
-                id="entry-sec-keys-{idx}"
-                type="text"
-                value={(entry.secondary_keys || []).join(", ")}
-                oninput={(e) => {
-                  entry.secondary_keys = e.currentTarget.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean);
-                }}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. wand, spellbook"
-              />
+                <Trash2 class="w-4 h-4" />
+              </button>
+              {#if expandedEntries[entry.id]}
+                <ChevronUp class="w-5 h-5 text-muted-foreground" />
+              {:else}
+                <ChevronDown class="w-5 h-5 text-muted-foreground" />
+              {/if}
             </div>
           </div>
 
-          <div class="space-y-1">
-            <label
-              for="entry-content-{idx}"
-              class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-              >Injected Lore Fact (Injected on trigger match)</label
+          <!-- Expandable Body -->
+          {#if expandedEntries[entry.id]}
+            <div
+              class="p-4 sm:p-5 border-t border-border/50 space-y-4 bg-background/50"
+              transition:slide={{ duration: 200 }}
             >
-            <textarea
-              id="entry-content-{idx}"
-              use:autoresize={entry.content}
-              bind:value={entry.content}
-              disabled={generatingAll || activeGeneratingField !== null}
-              class="w-full border rounded-lg p-3 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
-              placeholder="e.g. Fireball is an evocation spell conjuring a sphere of flame. Merlin teaches this to advanced seekers after they master basic fire safety."
-            ></textarea>
-          </div>
+              <div
+                class="flex flex-wrap items-center gap-3 pb-3 border-b border-border/50"
+              >
+                <button
+                  onclick={() => (entry.enabled = !entry.enabled)}
+                  disabled={generatingAll || activeGeneratingField !== null}
+                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.enabled
+                    ? 'text-blue-500'
+                    : 'text-muted-foreground'}"
+                >
+                  {#if entry.enabled}
+                    <CheckSquare class="w-4 h-4" /> Trigger Active
+                  {:else}
+                    <Square class="w-4 h-4" /> Trigger Bypassed
+                  {/if}
+                </button>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1">
-              <label
-                for="entry-comment-{idx}"
-                class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Developer Notes</label
-              >
-              <input
-                id="entry-comment-{idx}"
-                type="text"
-                bind:value={entry.comment}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. Lesson prerequisites for Merlin's fire evocation tutorial"
-              />
+                <button
+                  onclick={() => (entry.constant = !entry.constant)}
+                  disabled={generatingAll || activeGeneratingField !== null}
+                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.constant
+                    ? 'text-purple-500'
+                    : 'text-muted-foreground'}"
+                >
+                  {#if entry.constant}
+                    <CheckSquare class="w-4 h-4" /> Always Injected
+                  {:else}
+                    <Square class="w-4 h-4" /> Keyword Gated
+                  {/if}
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                  <label
+                    for="entry-keys-{idx}"
+                    class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
+                    >Primary Keyword Triggers (Comma-separated)</label
+                  >
+                  <input
+                    id="entry-keys-{idx}"
+                    type="text"
+                    value={entry.keys.join(", ")}
+                    oninput={(e) => {
+                      entry.keys = e.currentTarget.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                    }}
+                    disabled={generatingAll || activeGeneratingField !== null}
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    placeholder="e.g. Fireball, spell casting"
+                  />
+                </div>
+                <div class="space-y-1">
+                  <label
+                    for="entry-sec-keys-{idx}"
+                    class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
+                    >Secondary Co-Triggers (Requires both to trigger)</label
+                  >
+                  <input
+                    id="entry-sec-keys-{idx}"
+                    type="text"
+                    value={(entry.secondary_keys || []).join(", ")}
+                    oninput={(e) => {
+                      entry.secondary_keys = e.currentTarget.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                    }}
+                    disabled={generatingAll || activeGeneratingField !== null}
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    placeholder="e.g. wand, spellbook"
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-1">
+                <label
+                  for="entry-content-{idx}"
+                  class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
+                  >Injected Lore Fact (Injected on trigger match)</label
+                >
+                <textarea
+                  id="entry-content-{idx}"
+                  use:autoresize={entry.content}
+                  bind:value={entry.content}
+                  disabled={generatingAll || activeGeneratingField !== null}
+                  class="w-full border rounded-lg p-3 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
+                  placeholder="e.g. Fireball is an evocation spell conjuring a sphere of flame. Merlin teaches this to advanced seekers..."
+                ></textarea>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                  <label
+                    for="entry-comment-{idx}"
+                    class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
+                    >Developer Notes</label
+                  >
+                  <input
+                    id="entry-comment-{idx}"
+                    type="text"
+                    bind:value={entry.comment}
+                    disabled={generatingAll || activeGeneratingField !== null}
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    placeholder="e.g. Background for Merlin's magical academy"
+                  />
+                </div>
+                <div class="space-y-1">
+                  <label
+                    for="entry-priority-{idx}"
+                    class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
+                    >Activation Priority Rank</label
+                  >
+                  <input
+                    id="entry-priority-{idx}"
+                    type="number"
+                    bind:value={entry.priority}
+                    disabled={generatingAll || activeGeneratingField !== null}
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    placeholder="e.g. 10 (higher numbers activate first)"
+                  />
+                </div>
+              </div>
             </div>
-            <div class="space-y-1">
-              <label
-                for="entry-priority-{idx}"
-                class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Activation Priority Rank</label
-              >
-              <input
-                id="entry-priority-{idx}"
-                type="number"
-                bind:value={entry.priority}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. 10 (higher numbers activate first)"
-              />
-            </div>
-          </div>
+          {/if}
         </div>
       {/each}
     {/if}

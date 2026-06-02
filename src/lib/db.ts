@@ -8,10 +8,16 @@ export interface ExampleMessage {
 
 export interface CharacterAsset {
   id: string;
+  characterId: string;
   name: string;
   type: 'image' | 'avatar' | 'voice';
   uri: string;
   ext: string;
+}
+
+export interface CharacterImage {
+  id: string;
+  image: string | null;
 }
 
 export interface CharacterBookEntry {
@@ -44,9 +50,8 @@ export interface Character {
     backstory: string;
     firstMessages: string[];
     exampleMessages: ExampleMessage[];
-    image?: string | null;
+    thumbnail?: string | null;
     relatedCharacters: string;
-    assets: CharacterAsset[];
     characterBook: CharacterBook;
     worldInfo: string;
   };
@@ -54,6 +59,8 @@ export interface Character {
 
 export class CharDB extends Dexie {
   characters!: Table<Character, string>;
+  characterImages!: Table<CharacterImage, string>;
+  characterAssets!: Table<CharacterAsset, string>;
 
   constructor() {
     super('CharCreatorDB');
@@ -62,7 +69,6 @@ export class CharDB extends Dexie {
       characters: 'id, name, createdAt, updatedAt'
     });
 
-    // Version 2: Restructured data schema
     this.version(2).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -93,7 +99,6 @@ export class CharDB extends Dexie {
       });
     });
 
-    // Version 3: Adds character avatar support
     this.version(3).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -104,7 +109,6 @@ export class CharDB extends Dexie {
       });
     });
 
-    // Version 4: Adds support for other related characters
     this.version(4).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -115,7 +119,6 @@ export class CharDB extends Dexie {
       });
     });
 
-    // Version 5: Adds support for character assets list
     this.version(5).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -126,22 +129,16 @@ export class CharDB extends Dexie {
       });
     });
 
-    // Version 6: Adds support for character book (lorebook)
     this.version(6).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
       return tx.table('characters').toCollection().modify(char => {
         if (!char.data.characterBook) {
-          char.data.characterBook = {
-            name: '',
-            description: '',
-            entries: []
-          };
+          char.data.characterBook = { name: '', description: '', entries: [] };
         }
       });
     });
 
-    // Version 7: Adds support for external world info (standalone lorebooks)
     this.version(7).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -149,6 +146,29 @@ export class CharDB extends Dexie {
         if (char.data.worldInfo === undefined) {
           char.data.worldInfo = '';
         }
+      });
+    });
+
+    // Version 8: Separates all binary data into isolated table stores to resolve toArray() lag.
+    this.version(8).stores({
+      characters: 'id, name, createdAt, updatedAt',
+      characterImages: 'id',
+      characterAssets: 'id, characterId'
+    }).upgrade(async tx => {
+      await tx.table('characters').toCollection().modify((char) => {
+        if (char.data.image) {
+          tx.table('characterImages').put({ id: char.id, image: char.data.image });
+          // @ts-ignore - Removing old legacy binary fields
+          delete char.data.image;
+        }
+        if (char.data.assets && char.data.assets.length > 0) {
+          for (const asset of char.data.assets) {
+            tx.table('characterAssets').put({ ...asset, characterId: char.id });
+          }
+          // @ts-ignore - Removing old legacy binary fields
+          delete char.data.assets;
+        }
+        char.data.thumbnail = null;
       });
     });
   }

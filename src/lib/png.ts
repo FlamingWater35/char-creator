@@ -201,3 +201,30 @@ export function generateDefaultBlackPNG(): string {
   }
   return canvas.toDataURL('image/png');
 }
+
+export async function generateThumbnail(base64: string, maxSize = 128): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width *= ratio;
+        height *= ratio;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        // Using JPEG format for thumbnails to heavily optimize database query arrays
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      } else {
+        reject(new Error("Failed to get canvas context"));
+      }
+    };
+    img.onerror = () => reject(new Error("Invalid image"));
+    img.src = base64;
+  });
+}

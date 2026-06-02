@@ -24,8 +24,13 @@ self.addEventListener('activate', (event: any) => {
 self.addEventListener('fetch', (event: any) => {
 	if (event.request.method !== 'GET') return;
 
+	const url = new URL(event.request.url);
+	// Bypass caching for internal generator APIs and local LLM endpoints
+	if (url.pathname.startsWith('/api/') || url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+		return;
+	}
+
 	async function respond() {
-		const url = new URL(event.request.url);
 		const cache = await caches.open(CACHE);
 
 		// Always try the cache for static assets

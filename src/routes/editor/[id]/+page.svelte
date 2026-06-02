@@ -1,13 +1,14 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import { onMount, onDestroy, untrack } from "svelte";
-  import { db, type Character } from "$lib/db";
+  import { db, type Character, type CharacterAsset } from "$lib/db";
   import { settings } from "$lib/settings.svelte";
   import { dialogs } from "$lib/dialogs.svelte";
   import { autoresize } from "$lib/autoresize";
   import { fade } from "svelte/transition";
   import {
     injectCharacterCardMetadata,
+    generateThumbnail,
     generateDefaultBlackPNG,
   } from "$lib/png";
   import {
@@ -23,7 +24,6 @@
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
-  // Sub-component Imports
   import MediaAssets from "$lib/components/editor/MediaAssets.svelte";
   import Lorebook from "$lib/components/editor/Lorebook.svelte";
   import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
@@ -35,6 +35,9 @@
     "You are an expert AI character creator and writer. You output ONLY the requested content, without conversational filler or markdown formatting blocks unless explicitly requested.";
 
   let character = $state<Character | null>(null);
+  let characterImage = $state<string | null>(null);
+  let characterAssets = $state<CharacterAsset[]>([]);
+
   let loading = $state(true);
   let generatingAll = $state(false);
   let copied = $state(false);
@@ -48,29 +51,39 @@
 
   let fileInput = $state<HTMLInputElement>();
 
+  let estimatedTokens = $derived.by(() => {
+    if (!character) return 0;
+    const d = character.data;
+    const baseStr = `${character.name} ${d.mainPrompt} ${d.description} ${d.personality} ${d.scenario} ${d.backstory} ${d.relatedCharacters}`;
+    const msgStr =
+      d.firstMessages.join(" ") +
+      " " +
+      d.exampleMessages.map((e) => e.user + " " + e.character).join(" ");
+    const loreStr = d.characterBook.entries
+      .filter((e) => e.enabled)
+      .map((e) => e.content)
+      .join(" ");
+    return Math.ceil((baseStr.length + msgStr.length + loreStr.length) / 4);
+  });
+
   onMount(async () => {
     if (!characterId) return goto("/");
-    const char = await db.characters.get(characterId);
-    if (char) {
-      character = char;
-      if (!character.data.assets) {
-        character.data.assets = [];
-      }
-      if (!character.data.characterBook) {
-        character.data.characterBook = {
-          name: "",
-          description: "",
-          entries: [],
-        };
-      }
-      if (character.data.worldInfo === undefined) {
-        character.data.worldInfo = "";
-      }
-    } else {
-      goto("/");
-    }
-    loading = false;
 
+    const char = await db.characters.get(characterId);
+    if (!char) return goto("/");
+
+    character = char;
+
+    const imgObj = await db.characterImages.get(characterId);
+    characterImage = imgObj?.image || null;
+
+    characterAssets =
+      (await db.characterAssets
+        .where("characterId")
+        .equals(characterId)
+        .toArray()) || [];
+
+    loading = false;
     window.addEventListener("beforeunload", handleBeforeUnload);
   });
 
@@ -86,6 +99,8 @@
       const trigger = JSON.stringify({
         name: character.name,
         data: character.data,
+        img: characterImage,
+        assets: characterAssets,
       });
 
       if (isInitialLoad) {
@@ -103,26 +118,40 @@
     }
   });
 
-  function saveCharacter() {
+  async function saveCharacter() {
     if (!character) return;
     saveState = "saving";
 
     const snap = $state.snapshot(character);
+    const snapImg = $state.snapshot(characterImage);
+    const snapAssets = $state.snapshot(characterAssets);
+
     snap.updatedAt = new Date();
 
-    db.characters
-      .put(snap)
-      .then(() => {
-        if (saveState === "saving") {
-          setTimeout(() => {
-            saveState = "idle";
-          }, 1000);
-        }
-      })
-      .catch((err) => {
-        console.error("Autosave failed:", err);
-        saveState = "idle";
-      });
+    try {
+      await db.characters.put(snap);
+      if (snapImg) {
+        await db.characterImages.put({ id: snap.id, image: snapImg });
+      } else {
+        await db.characterImages.delete(snap.id);
+      }
+
+      await db.characterAssets.where("characterId").equals(snap.id).delete();
+      if (snapAssets.length > 0) {
+        await db.characterAssets.bulkPut(
+          snapAssets.map((a) => ({ ...a, characterId: snap.id })),
+        );
+      }
+
+      if (saveState === "saving") {
+        setTimeout(() => {
+          saveState = "idle";
+        }, 1000);
+      }
+    } catch (err) {
+      console.error("Autosave failed:", err);
+      saveState = "idle";
+    }
   }
 
   function forceImmediateSave() {
@@ -143,47 +172,14 @@
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    const needsCompression = file.size > 2 * 1024 * 1024;
-    const needsConversion = file.type !== "image/png";
-
-    if (needsCompression || needsConversion) {
-      await dialogs.alert(
-        "Your image will be automatically compressed and converted to PNG.",
-        "Processing Image",
-      );
-    }
-
     try {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement("canvas");
-          let { width, height } = img;
-          const MAX_SIZE = 1024;
-
-          if (width > MAX_SIZE || height > MAX_SIZE) {
-            const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
-            width *= ratio;
-            height *= ratio;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL("image/png", 0.9);
-            if (character) character.data.image = dataUrl;
-          }
-        };
-        img.onerror = () => {
-          dialogs.alert(
-            "The selected file is not a valid image.",
-            "Image Error",
-          );
-        };
-        img.src = event.target?.result as string;
+      reader.onload = async (event) => {
+        const base64 = event.target?.result as string;
+        if (character) {
+          characterImage = base64;
+          character.data.thumbnail = await generateThumbnail(base64);
+        }
       };
       reader.readAsDataURL(file);
     } catch (error) {
@@ -233,26 +229,14 @@
         }),
       });
 
-      let data;
-      try {
-        data = await res.json();
-      } catch (e) {
-        dialogs.alert(
-          "Invalid response from API (might be a gateway error).",
-          "API Error",
-        );
-        return null;
-      }
-
+      const data = await res.json();
       if (data.error) {
         dialogs.alert("API Error: " + data.error, "Generation Failed");
         return null;
       }
       return data.result;
     } catch (e: any) {
-      if (e.name === "AbortError") {
-        return null;
-      }
+      if (e.name === "AbortError") return null;
       dialogs.alert("Network error while calling AI.", "Error");
       return null;
     } finally {
@@ -267,35 +251,21 @@
   ) {
     if (!character) return;
     activeGeneratingField = fieldName;
-
-    const prompt = `You are an expert roleplay character creator.
-The main concept for this character is: ${character.data.mainPrompt}
-
-Please expand, refine, and improve the following field [${fieldName}]:
-${currentContent || "(No content yet)"}
-
-Respond ONLY with the improved content. Do not include any meta-commentary, markdown formatting (unless it's just plain text paragraphs), or explanations. Keep the tone appropriate for character definitions.`;
-
+    const prompt = `You are an expert roleplay character creator.\nThe main concept for this character is: ${character.data.mainPrompt}\n\nPlease expand, refine, and improve the following field [${fieldName}]:\n${currentContent || "(No content yet)"}\n\nRespond ONLY with the improved content. Do not include any meta-commentary or explanations. Keep the tone appropriate for character definitions.`;
     const result = await callAI(prompt, aiSystemPrompt);
     if (result) updateCb(result.trim());
-
-    if (activeGeneratingField === fieldName) {
-      activeGeneratingField = null;
-    }
+    if (activeGeneratingField === fieldName) activeGeneratingField = null;
   }
 
   async function generateAll() {
-    if (!character) return;
-    if (!character.data.mainPrompt) {
+    if (!character || !character.data.mainPrompt) {
       dialogs.alert(
         "Please enter a core concept (Main Prompt) first.",
         "Concept Missing",
       );
       return;
     }
-
     generatingAll = true;
-
     const schemaObj: Record<string, string> = {};
     if (settings.genName) schemaObj["name"] = "Character name";
     if (settings.genDescription)
@@ -317,13 +287,7 @@ Respond ONLY with the improved content. Do not include any meta-commentary, mark
       schemaObj["relatedCharacters"] =
         "Details about other related characters, including their names, relationships, and brief descriptions";
 
-    const prompt = `Generate a roleplay character profile based on this concept:
-"${character.data.mainPrompt}"
-
-Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY raw JSON, no markdown blocks.
-
-${JSON.stringify(schemaObj, null, 2)}`;
-
+    const prompt = `Generate a roleplay character profile based on this concept:\n"${character.data.mainPrompt}"\n\nRespond ONLY with a valid JSON object matching this schema exactly. Output ONLY raw JSON, no markdown blocks.\n\n${JSON.stringify(schemaObj, null, 2)}`;
     const result = await callAI(prompt, aiSystemPrompt);
 
     if (result) {
@@ -338,93 +302,64 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             .replace(/^```json/, "")
             .replace(/```$/, "")
             .trim();
-        } else if (cleanJson.startsWith("```")) {
-          cleanJson = cleanJson.replace(/^```/, "").replace(/```$/, "").trim();
         }
 
         const parsed = JSON.parse(cleanJson);
-        const dataPayload = parsed.data || parsed;
+        const d = parsed.data || parsed;
 
-        if (
-          settings.genName &&
-          (dataPayload.name || dataPayload.character_name)
-        ) {
-          character.name = dataPayload.name || dataPayload.character_name;
-        }
+        if (settings.genName && (d.name || d.character_name))
+          character.name = d.name || d.character_name;
         if (
           settings.genDescription &&
-          (dataPayload.description ||
-            dataPayload.desc ||
-            dataPayload.appearance)
-        ) {
-          character.data.description =
-            dataPayload.description ||
-            dataPayload.desc ||
-            dataPayload.appearance;
-        }
+          (d.description || d.desc || d.appearance)
+        )
+          character.data.description = d.description || d.desc || d.appearance;
         if (
           settings.genPersonality &&
-          (dataPayload.personality ||
-            dataPayload.personality_traits ||
-            dataPayload.traits)
-        ) {
+          (d.personality || d.personality_traits || d.traits)
+        )
           character.data.personality =
-            dataPayload.personality ||
-            dataPayload.personality_traits ||
-            dataPayload.traits;
-        }
-        if (
-          settings.genScenario &&
-          (dataPayload.scenario || dataPayload.setting || dataPayload.context)
-        ) {
-          character.data.scenario =
-            dataPayload.scenario || dataPayload.setting || dataPayload.context;
-        }
+            d.personality || d.personality_traits || d.traits;
+        if (settings.genScenario && (d.scenario || d.setting || d.context))
+          character.data.scenario = d.scenario || d.setting || d.context;
         if (
           settings.genBackstory &&
-          (dataPayload.backstory ||
-            dataPayload.backstory_details ||
-            dataPayload.origin)
-        ) {
+          (d.backstory || d.backstory_details || d.origin)
+        )
           character.data.backstory =
-            dataPayload.backstory ||
-            dataPayload.backstory_details ||
-            dataPayload.origin;
-        }
+            d.backstory || d.backstory_details || d.origin;
         if (
           settings.genRelatedCharacters &&
-          (dataPayload.relatedCharacters ||
-            dataPayload.related_characters ||
-            dataPayload.other_characters ||
-            dataPayload.relations)
-        ) {
+          (d.relatedCharacters ||
+            d.related_characters ||
+            d.other_characters ||
+            d.relations)
+        )
           character.data.relatedCharacters =
-            dataPayload.relatedCharacters ||
-            dataPayload.related_characters ||
-            dataPayload.other_characters ||
-            dataPayload.relations;
-        }
+            d.relatedCharacters ||
+            d.related_characters ||
+            d.other_characters ||
+            d.relations;
 
         const firstMsgRaw =
-          dataPayload.firstMessages ||
-          dataPayload.first_messages ||
-          dataPayload.greetings ||
-          dataPayload.first_mes ||
-          dataPayload.greeting;
+          d.firstMessages ||
+          d.first_messages ||
+          d.greetings ||
+          d.first_mes ||
+          d.greeting;
         if (settings.genFirstMessages && firstMsgRaw) {
-          if (Array.isArray(firstMsgRaw) && firstMsgRaw.length > 0) {
+          if (Array.isArray(firstMsgRaw) && firstMsgRaw.length > 0)
             character.data.firstMessages = firstMsgRaw.filter(Boolean);
-          } else if (typeof firstMsgRaw === "string" && firstMsgRaw.trim()) {
+          else if (typeof firstMsgRaw === "string" && firstMsgRaw.trim())
             character.data.firstMessages = [firstMsgRaw.trim()];
-          }
         }
 
         const exampleMsgRaw =
-          dataPayload.exampleMessages ||
-          dataPayload.example_messages ||
-          dataPayload.mes_example ||
-          dataPayload.dialogue_examples ||
-          dataPayload.dialogueExamples;
+          d.exampleMessages ||
+          d.example_messages ||
+          d.mes_example ||
+          d.dialogue_examples ||
+          d.dialogueExamples;
         if (settings.genExampleMessages && Array.isArray(exampleMsgRaw)) {
           character.data.exampleMessages = exampleMsgRaw.map((e: any) => ({
             id: crypto.randomUUID(),
@@ -447,7 +382,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
   function downloadCardPNG() {
     if (!character) return;
 
-    let imgData = character.data.image;
+    let imgData = characterImage;
     if (!imgData) {
       imgData = generateDefaultBlackPNG();
     }
@@ -456,12 +391,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     let appended: string[] = [];
 
     if (settings.mergeTraitsOnExport) {
-      if (character.data.personality?.trim()) {
+      if (character.data.personality?.trim())
         appended.push(`Personality: ${character.data.personality.trim()}`);
-      }
-      if (character.data.scenario?.trim()) {
+      if (character.data.scenario?.trim())
         appended.push(`Scenario: ${character.data.scenario.trim()}`);
-      }
     }
 
     if (character.data.backstory?.trim())
@@ -471,11 +404,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         `Related Characters: ${character.data.relatedCharacters.trim()}`,
       );
 
-    if (appended.length > 0) {
-      finalDesc += "\n\n" + appended.join("\n\n");
-    }
+    if (appended.length > 0) finalDesc += "\n\n" + appended.join("\n\n");
 
-    const specAssetsList = (character.data.assets || []).map((asset) => ({
+    const specAssetsList = characterAssets.map((asset) => ({
       type: asset.type,
       uri: asset.uri,
       name: asset.name,
@@ -487,10 +418,14 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       description: character.data.characterBook?.description || "",
       entries: (character.data.characterBook?.entries || []).map((entry) => ({
         keys: entry.keys,
+        key: entry.keys,
         secondary_keys: entry.secondary_keys || [],
+        keysecondary: entry.secondary_keys || [],
         content: entry.content,
         enabled: entry.enabled,
+        disable: !entry.enabled,
         priority: entry.priority ?? 10,
+        order: entry.priority ?? 10,
         comment: entry.comment || "",
         constant: entry.constant ?? false,
       })),
@@ -529,9 +464,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         character_book: characterBookData,
         assets: specAssetsList,
         extensions: {
-          char_creator: {
-            mainPrompt: character.data.mainPrompt,
-          },
+          char_creator: { mainPrompt: character.data.mainPrompt },
           world_info: character.data.worldInfo || "",
         },
         creation_date: Math.floor(character.createdAt.getTime() / 1000),
@@ -574,11 +507,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           character_version: "1.0",
           character_book: characterBookData,
           extensions: {
-            char_creator: {
-              mainPrompt: character.data.mainPrompt,
-            },
+            char_creator: { mainPrompt: character.data.mainPrompt },
             world_info: character.data.worldInfo || "",
-            assets: (character.data.assets || []).reduce(
+            assets: characterAssets.reduce(
               (acc, asset) => {
                 acc[asset.name || asset.id] = asset.uri;
                 return acc;
@@ -616,7 +547,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
   function copyToClipboard() {
     if (!character) return;
     const c = character.data;
-
     let parts: string[] = [];
     parts.push(`Name: ${character.name}`);
 
@@ -628,7 +558,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     if (c.backstory?.trim()) subfields.push(`Backstory: ${c.backstory.trim()}`);
     if (c.relatedCharacters?.trim())
       subfields.push(`Related Characters: ${c.relatedCharacters.trim()}`);
-
     if (subfields.length > 0) descPart += "\n\n" + subfields.join("\n");
     if (descPart) parts.push(descPart);
 
@@ -653,7 +582,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     }
 
     const finalExport = "---\n\n" + parts.join("\n\n---\n\n") + "\n\n---";
-
     navigator.clipboard.writeText(finalExport).then(() => {
       copied = true;
       setTimeout(() => (copied = false), 2000);
@@ -677,7 +605,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
   {:else if character}
     <div
       in:fade={{ duration: 200, delay: 150 }}
-      class="max-w-4xl mx-auto pb-24 w-full"
+      class="max-w-4xl mx-auto pb-24 w-full relative"
     >
       <a
         href="/"
@@ -701,9 +629,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             aria-label="Upload character image"
             disabled={generatingAll || activeGeneratingField !== null}
           >
-            {#if character.data.image}
+            {#if character.data.thumbnail || characterImage}
               <img
-                src={character.data.image}
+                src={character.data.thumbnail || characterImage}
                 alt="Avatar"
                 class="w-full h-full object-cover"
               />
@@ -759,27 +687,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               <Download class="w-4 h-4" /> PNG Card
             </button>
           </div>
-
-          <div
-            class="flex items-center justify-center gap-2 px-4 py-2 bg-secondary rounded-md min-w-40"
-          >
-            {#if saveState === "waiting"}
-              <span
-                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-                >Unsaved changes...</span
-              >
-            {:else if saveState === "saving"}
-              <span
-                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-                ><Loader2 class="w-4 h-4 animate-spin" /> Saving...</span
-              >
-            {:else}
-              <span
-                class="text-sm font-medium text-muted-foreground flex items-center gap-2"
-                ><Save class="w-4 h-4" /> Auto-Saved</span
-              >
-            {/if}
-          </div>
         </div>
       </div>
 
@@ -829,21 +736,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           ></textarea>
         </div>
 
-        <!-- Media Assets Management Grid -->
-        <MediaAssets
-          bind:assets={character.data.assets}
-          {generatingAll}
-          {activeGeneratingField}
-        />
-
-        <!-- Lorebook / Character Book Panel -->
-        <Lorebook
-          bind:characterBook={character.data.characterBook}
-          bind:worldInfo={character.data.worldInfo}
-          {generatingAll}
-          {activeGeneratingField}
-        />
-
         <!-- Main Fields Section -->
         <div class="space-y-8">
           <div class="space-y-3">
@@ -888,7 +780,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             ></textarea>
           </div>
 
-          <!-- FIRST MESSAGES -->
           <FirstGreetings
             bind:firstMessages={character.data.firstMessages}
             {generatingAll}
@@ -897,7 +788,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             oncancel={cancelGeneration}
           />
 
-          <!-- EXAMPLE MESSAGES -->
           <ExampleDialogues
             bind:exampleMessages={character.data.exampleMessages}
             {generatingAll}
@@ -907,7 +797,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           />
         </div>
 
-        <!-- Subfields Section -->
         <Subfields
           bind:personality={character.data.personality}
           bind:scenario={character.data.scenario}
@@ -918,6 +807,45 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           onenhance={enhanceField}
           oncancel={cancelGeneration}
         />
+
+        <!-- Media Assets Management Grid -->
+        <MediaAssets
+          bind:assets={characterAssets}
+          characterId={character.id}
+          {generatingAll}
+          {activeGeneratingField}
+        />
+
+        <!-- Lorebook / Character Book Panel -->
+        <Lorebook
+          bind:characterBook={character.data.characterBook}
+          bind:worldInfo={character.data.worldInfo}
+          {generatingAll}
+          {activeGeneratingField}
+        />
+      </div>
+
+      <!-- Floating Token and Save Status Indicator -->
+      <div class="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+        <div
+          class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+        >
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span>~{estimatedTokens} Tokens</span>
+        </div>
+
+        <div
+          class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+        >
+          {#if saveState === "waiting"}
+            <span>Unsaved changes...</span>
+          {:else if saveState === "saving"}
+            <Loader2 class="w-3 h-3 animate-spin" /> Saving...
+          {:else}
+            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+            <span>Auto-Saved</span>
+          {/if}
+        </div>
       </div>
     </div>
   {/if}

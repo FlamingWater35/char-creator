@@ -65,7 +65,6 @@
     await fetchModels();
   });
 
-  // Automatically watch and persist settings upon any input bindings updates
   $effect(() => {
     const _ = {
       apiKey: settings.apiKey,
@@ -119,11 +118,12 @@
           : false;
         const currentExists = models.some((m) => m.id === settings.model);
 
-        if (currentExists) {
-        } else if (preferredExists && preferredDefault) {
-          settings.model = preferredDefault;
-        } else {
-          settings.model = models[0].id;
+        if (!currentExists) {
+          if (preferredExists && preferredDefault) {
+            settings.model = preferredDefault;
+          } else {
+            settings.model = models[0].id;
+          }
         }
       } else {
         models = [];
@@ -158,6 +158,9 @@
   async function exportDatabase() {
     try {
       const allCharacters = await db.characters.toArray();
+      const allImages = await db.characterImages.toArray();
+      const allAssets = await db.characterAssets.toArray();
+
       const backup = {
         app: "char-creator",
         version: 1,
@@ -184,6 +187,8 @@
           exportVersion: settings.exportVersion,
         },
         characters: allCharacters,
+        characterImages: allImages,
+        characterAssets: allAssets,
       };
 
       const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -266,10 +271,22 @@
         settings.save();
       }
 
+      let importedCount = 0;
       if (Array.isArray(backup.characters)) {
-        let importedCount = 0;
         for (const char of backup.characters) {
           if (!char.id || !char.name) continue;
+
+          // Legacy backwards compatibility handling for nested structures
+          let fallbackImage = null;
+          let fallbackAssets = [];
+          if (char.data.image) {
+            fallbackImage = char.data.image;
+            delete char.data.image;
+          }
+          if (char.data.assets) {
+            fallbackAssets = char.data.assets;
+            delete char.data.assets;
+          }
 
           const finalChar = {
             id: char.id,
@@ -288,9 +305,8 @@
               exampleMessages: Array.isArray(char.data?.exampleMessages)
                 ? char.data.exampleMessages
                 : [],
-              image: char.data?.image || null,
+              thumbnail: char.data?.thumbnail || null,
               relatedCharacters: char.data?.relatedCharacters || "",
-              assets: Array.isArray(char.data?.assets) ? char.data.assets : [],
               characterBook: char.data?.characterBook
                 ? {
                     name: char.data.characterBook.name || "",
@@ -306,7 +322,25 @@
 
           await db.characters.put(finalChar);
           importedCount++;
+
+          if (fallbackImage) {
+            await db.characterImages.put({ id: char.id, image: fallbackImage });
+          }
+          if (fallbackAssets.length > 0) {
+            for (const asset of fallbackAssets) {
+              await db.characterAssets.put({ ...asset, characterId: char.id });
+            }
+          }
         }
+
+        // Import decoupled tables
+        if (Array.isArray(backup.characterImages)) {
+          await db.characterImages.bulkPut(backup.characterImages);
+        }
+        if (Array.isArray(backup.characterAssets)) {
+          await db.characterAssets.bulkPut(backup.characterAssets);
+        }
+
         await dialogs.alert(
           `Successfully updated configurations and loaded ${importedCount} characters.`,
           "Database Restored",
@@ -339,6 +373,8 @@
       );
       if (doubleCheck) {
         await db.characters.clear();
+        await db.characterImages.clear();
+        await db.characterAssets.clear();
         await dialogs.alert("All character files deleted.", "Clear Completed");
       }
     }
@@ -369,7 +405,6 @@
     </p>
   </div>
 
-  <!-- Appearance Section -->
   <section class="space-y-4">
     <div
       class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
@@ -411,7 +446,6 @@
     </div>
   </section>
 
-  <!-- Main Settings Panel -->
   <section class="space-y-4">
     <div
       class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
@@ -422,16 +456,14 @@
     <div
       class="bg-card border rounded-2xl shadow-sm overflow-hidden divide-y divide-border"
     >
-      <!-- AI Configuration -->
       <div class="p-6 space-y-6">
-        <div class="flex items-center gap-3 mb-5">
+        <div class="flex items-center gap-3 mb-6">
           <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
             <Cpu class="w-5 h-5" />
           </div>
           <h2 class="text-xl font-bold">AI Engine</h2>
         </div>
 
-        <!-- Provider Switcher -->
         <div class="flex flex-col gap-3 pt-2">
           <label class="font-bold text-sm" for="provider">API Provider</label>
           <select
@@ -451,7 +483,6 @@
           </select>
         </div>
 
-        <!-- Custom Base URL -->
         {#if settings.provider === "custom"}
           <div transition:slide class="flex flex-col gap-3">
             <label for="customBaseUrl" class="font-bold text-sm"
@@ -470,7 +501,6 @@
           </div>
         {/if}
 
-        <!-- API Key -->
         <div class="flex flex-col gap-3">
           <label for="apiKey" class="font-bold text-sm">
             {settings.provider === "custom" ? "API Key (Optional)" : "API Key"}
@@ -500,7 +530,6 @@
           </div>
         </div>
 
-        <!-- Model Selector with Refresh Trigger -->
         <div class="flex flex-col gap-3">
           <div class="flex justify-between items-center">
             <div id="model-label" class="font-bold text-sm">Active Model</div>
@@ -584,7 +613,6 @@
           {/if}
         </div>
 
-        <!-- Parameters -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
           <div class="space-y-4">
             <div class="flex justify-between">
@@ -625,7 +653,6 @@
           </div>
         </div>
 
-        <!-- Advanced section Accordion -->
         <div class="bg-secondary/30 rounded-xl px-4 py-2">
           <button
             type="button"
@@ -697,7 +724,6 @@
         </div>
       </div>
 
-      <!-- Toggles Section -->
       <div class="p-6 bg-muted/10 space-y-6">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-purple-500/10 text-purple-500 rounded-lg">
@@ -745,7 +771,6 @@
         </div>
       </div>
 
-      <!-- Export Compatibility Options Section -->
       <div class="p-6 bg-secondary/10 space-y-6">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
@@ -754,7 +779,6 @@
           <h2 class="text-xl font-bold">Export Compatibility</h2>
         </div>
 
-        <!-- Export Spec Version Selector -->
         <div
           class="flex flex-col gap-3 p-4 border rounded-xl bg-background shadow-sm"
         >
@@ -806,7 +830,6 @@
         </button>
       </div>
 
-      <!-- Database & Maintenance Section -->
       <div class="p-6 space-y-6 bg-card">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-destructive/10 text-destructive rounded-lg">
@@ -854,7 +877,6 @@
   </section>
 </div>
 
-<!-- Reactive Autosave Status Indicator -->
 <div
   class="fixed bottom-6 right-6 z-40 bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
 >
