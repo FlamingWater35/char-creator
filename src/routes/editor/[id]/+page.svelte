@@ -296,10 +296,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           character.data.firstMessages = parsed.firstMessages;
         }
 
-        if (
-          settings.genExampleMessages &&
-          Array.isArray(parsed.exampleMessages)
-        ) {
+        if (Array.isArray(parsed.exampleMessages)) {
           character.data.exampleMessages = parsed.exampleMessages.map(
             (e: any) => ({
               id: crypto.randomUUID(),
@@ -327,7 +324,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       imgData = generateDefaultBlackPNG();
     }
 
-    // Embed subfields Backstory and Related Characters into main description for optimal card portability
     let finalDesc = character.data.description.trim();
     let appended: string[] = [];
     if (character.data.backstory?.trim())
@@ -336,6 +332,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       appended.push(
         `Related Characters: ${character.data.relatedCharacters.trim()}`,
       );
+
     if (appended.length > 0) {
       finalDesc += "\n\n" + appended.join("\n\n");
     }
@@ -368,7 +365,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         tags: [],
         creator: "",
         character_version: "1.0",
-        character_book: {},
+        character_book: {
+          entries: [],
+          extensions: {},
+        },
         assets: [],
         extensions: {},
         creation_date: Math.floor(character.createdAt.getTime() / 1000),
@@ -398,11 +398,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     const c = character.data;
 
     let parts: string[] = [];
-
-    // 1. Name
     parts.push(`Name: ${character.name}`);
 
-    // 2. Description + Subfields
     let descPart = c.description.trim();
     let subfields: string[] = [];
     if (c.personality?.trim())
@@ -415,7 +412,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     if (subfields.length > 0) descPart += "\n\n" + subfields.join("\n");
     if (descPart) parts.push(descPart);
 
-    // 3. First Messages
     let fmParts: string[] = [];
     c.firstMessages.forEach((msg, i) => {
       if (!msg.trim()) return;
@@ -424,7 +420,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     });
     if (fmParts.length > 0) parts.push(fmParts.join("\n\n"));
 
-    // 4. Dialogue Examples
     if (c.exampleMessages.some((ex) => ex.character.trim())) {
       let exParts: string[] = [];
       c.exampleMessages.forEach((ex) => {
