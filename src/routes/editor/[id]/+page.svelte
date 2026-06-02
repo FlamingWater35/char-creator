@@ -506,7 +506,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     >
       <a
         href="/"
-        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors {generatingAll ||
+        activeGeneratingField !== null
+          ? 'pointer-events-none opacity-50 cursor-not-allowed'
+          : ''}"
       >
         <ArrowLeft class="w-4 h-4" /> Back to Dashboard
       </a>
@@ -518,9 +521,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         <div class="flex items-center gap-4 flex-1">
           <!-- Avatar Upload -->
           <button
-            class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm"
+            class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             onclick={() => fileInput?.click()}
             aria-label="Upload character image"
+            disabled={generatingAll || activeGeneratingField !== null}
           >
             {#if character.data.image}
               <img
@@ -551,8 +555,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             type="text"
             bind:value={character.name}
             aria-label="Character Name"
-            class="text-3xl sm:text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full min-w-0"
+            class="text-3xl sm:text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="Character Name"
+            disabled={generatingAll || activeGeneratingField !== null}
           />
         </div>
 
@@ -562,7 +567,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           <div class="flex items-center gap-2">
             <button
               onclick={copyToClipboard}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm cursor-pointer"
+              disabled={generatingAll || activeGeneratingField !== null}
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {#if copied}
                 <Check class="w-4 h-4" /> Copied!
@@ -572,7 +578,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             </button>
             <button
               onclick={downloadCardPNG}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer"
+              disabled={generatingAll || activeGeneratingField !== null}
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download class="w-4 h-4" /> PNG Card
             </button>
@@ -629,7 +636,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             {:else}
               <button
                 onclick={generateAll}
-                disabled={!character.data.mainPrompt}
+                disabled={!character.data.mainPrompt ||
+                  activeGeneratingField !== null}
                 class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Sparkles class="w-4 h-4" /> Generate All Fields
@@ -640,8 +648,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             id="main-prompt"
             use:autoresize={character.data.mainPrompt}
             bind:value={character.data.mainPrompt}
-            class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25"
+            class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="e.g. A 20 years old female student who values friendship above everything else..."
+            disabled={generatingAll || activeGeneratingField !== null}
           ></textarea>
         </div>
 
@@ -671,7 +680,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       character!.data.description,
                       (v) => (character!.data.description = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  disabled={generatingAll ||
+                    (activeGeneratingField !== null &&
+                      activeGeneratingField !== "Description")}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -680,7 +692,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               use:autoresize={character.data.description}
               bind:value={character.data.description}
               aria-label="Description"
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={generatingAll ||
+                activeGeneratingField === "Description"}
             ></textarea>
           </div>
 
@@ -698,7 +712,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               </div>
               <button
                 onclick={addFirstMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                disabled={generatingAll || activeGeneratingField !== null}
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -730,14 +745,19 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                               msg,
                               (v) => (character!.data.firstMessages[i] = v),
                             )}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                          disabled={generatingAll ||
+                            (activeGeneratingField !== null &&
+                              activeGeneratingField !== `First Message ${i}`)}
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
                       {#if i > 0}
                         <button
                           onclick={() => removeFirstMessage(i)}
-                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                          disabled={generatingAll ||
+                            activeGeneratingField !== null}
+                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           ><Trash2 class="w-4 h-4" /></button
                         >
                       {/if}
@@ -747,7 +767,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                     id="first-msg-{i}"
                     use:autoresize={character.data.firstMessages[i]}
                     bind:value={character.data.firstMessages[i]}
-                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
+                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={generatingAll ||
+                      activeGeneratingField === `First Message ${i}`}
                   ></textarea>
                 </div>
               {/each}
@@ -767,7 +789,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               </div>
               <button
                 onclick={addExampleMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                disabled={generatingAll || activeGeneratingField !== null}
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -788,7 +811,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                 >
                   <button
                     onclick={() => removeExampleMessage(ex.id)}
-                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                    disabled={generatingAll || activeGeneratingField !== null}
+                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     ><Trash2 class="w-4 h-4" /></button
                   >
                   <div class="pr-8">
@@ -801,8 +825,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       id="ex-user-{i}"
                       use:autoresize={ex.user}
                       bind:value={ex.user}
-                      class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15"
+                      class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15 disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="e.g. *I walk into the tavern and wave*"
+                      disabled={generatingAll ||
+                        activeGeneratingField === `Example Message ${i}`}
                     ></textarea>
                   </div>
                   <div>
@@ -826,7 +852,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                               ex.character,
                               (v) => (ex.character = v),
                             )}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                          disabled={generatingAll ||
+                            (activeGeneratingField !== null &&
+                              activeGeneratingField !== `Example Message ${i}`)}
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
@@ -835,8 +864,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       id="ex-char-{i}"
                       use:autoresize={ex.character}
                       bind:value={ex.character}
-                      class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25"
+                      class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="e.g. *glances up from his ale* 'What do you want?'"
+                      disabled={generatingAll ||
+                        activeGeneratingField === `Example Message ${i}`}
                     ></textarea>
                   </div>
                 </div>
@@ -872,7 +903,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       character!.data.personality,
                       (v) => (character!.data.personality = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  disabled={generatingAll ||
+                    (activeGeneratingField !== null &&
+                      activeGeneratingField !== "Personality")}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -881,7 +915,9 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               id="sub-personality"
               use:autoresize={character.data.personality}
               bind:value={character.data.personality}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={generatingAll ||
+                activeGeneratingField === "Personality"}
             ></textarea>
           </div>
 
@@ -904,7 +940,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       character!.data.scenario,
                       (v) => (character!.data.scenario = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  disabled={generatingAll ||
+                    (activeGeneratingField !== null &&
+                      activeGeneratingField !== "Scenario")}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -913,7 +952,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               id="sub-scenario"
               use:autoresize={character.data.scenario}
               bind:value={character.data.scenario}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={generatingAll || activeGeneratingField === "Scenario"}
             ></textarea>
           </div>
 
@@ -936,7 +976,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       character!.data.backstory,
                       (v) => (character!.data.backstory = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  disabled={generatingAll ||
+                    (activeGeneratingField !== null &&
+                      activeGeneratingField !== "Backstory")}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -945,7 +988,8 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               id="sub-backstory"
               use:autoresize={character.data.backstory}
               bind:value={character.data.backstory}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={generatingAll || activeGeneratingField === "Backstory"}
             ></textarea>
           </div>
 
@@ -969,7 +1013,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
                       character!.data.relatedCharacters,
                       (v) => (character!.data.relatedCharacters = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  disabled={generatingAll ||
+                    (activeGeneratingField !== null &&
+                      activeGeneratingField !== "Related Characters")}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -978,8 +1025,10 @@ ${JSON.stringify(schemaObj, null, 2)}`;
               id="sub-relatedCharacters"
               use:autoresize={character.data.relatedCharacters}
               bind:value={character.data.relatedCharacters}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="Describe relations to other characters..."
+              disabled={generatingAll ||
+                activeGeneratingField === "Related Characters"}
             ></textarea>
           </div>
         </div>
