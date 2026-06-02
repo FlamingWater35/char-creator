@@ -160,6 +160,18 @@
         "";
 
       if (!mainPrompt) {
+        const mainPromptRegex = /"main_prompt"\s*:\s*"((?:[^"\\]|\\.)*)"/i;
+        const match = metadata.match(mainPromptRegex);
+        if (match && match[1]) {
+          try {
+            mainPrompt = JSON.parse(`"${match[1]}"`);
+          } catch (e) {
+            mainPrompt = match[1];
+          }
+        }
+      }
+
+      if (!mainPrompt) {
         mainPrompt = description.substring(0, 150) || name;
       }
 
