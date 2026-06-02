@@ -48,6 +48,7 @@ export interface Character {
     relatedCharacters: string;
     assets: CharacterAsset[];
     characterBook: CharacterBook;
+    worldInfo: string;
   };
 }
 
@@ -136,6 +137,17 @@ export class CharDB extends Dexie {
             description: '',
             entries: []
           };
+        }
+      });
+    });
+
+    // Version 7: Adds support for external world info (standalone lorebooks)
+    this.version(7).stores({
+      characters: 'id, name, createdAt, updatedAt'
+    }).upgrade(tx => {
+      return tx.table('characters').toCollection().modify(char => {
+        if (char.data.worldInfo === undefined) {
+          char.data.worldInfo = '';
         }
       });
     });

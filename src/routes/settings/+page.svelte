@@ -300,6 +300,7 @@
                       : [],
                   }
                 : { name: "", description: "", entries: [] },
+              worldInfo: char.data?.worldInfo || "",
             },
           };
 

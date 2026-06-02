@@ -8,14 +8,17 @@
     CheckSquare,
     Square,
     X,
+    FileText,
   } from "@lucide/svelte";
 
   let {
     characterBook = $bindable({ name: "", description: "", entries: [] }),
+    worldInfo = $bindable(""),
     generatingAll = false,
     activeGeneratingField = null,
   }: {
     characterBook: CharacterBook;
+    worldInfo: string;
     generatingAll: boolean;
     activeGeneratingField: string | null;
   } = $props();
@@ -58,15 +61,20 @@
 </script>
 
 <div class="bg-card border rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
-  <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+  <div
+    class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 animate-fade-in"
+  >
     <div class="flex items-center gap-3">
       <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
         <BookOpen class="w-6 h-6" />
       </div>
       <div>
-        <h3 class="text-2xl font-black">Lorebook</h3>
+        <h3 class="text-2xl font-black">
+          Contextual Knowledge Base (World Info & Lorebook)
+        </h3>
         <p class="text-xs text-muted-foreground">
-          Define knowledge entries, settings, or item triggers for lorebooks.
+          Saves context tokens by conditionally injecting background facts only
+          when trigger keywords appear in chat.
         </p>
       </div>
     </div>
@@ -75,8 +83,33 @@
       disabled={generatingAll || activeGeneratingField !== null}
       class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border hover:bg-secondary/80 font-bold px-4 py-2 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
     >
-      <Plus class="w-4 h-4" /> Add Lore Entry
+      <Plus class="w-4 h-4" /> Add Memory Entry
     </button>
+  </div>
+
+  <!-- Standalone External Lorebooks Reference -->
+  <div
+    class="p-4 bg-muted/30 rounded-xl border border-dashed border-border/80 space-y-3"
+  >
+    <div class="flex items-center gap-2 text-sm font-bold text-foreground">
+      <FileText class="w-4 h-4 text-blue-500" />
+      <span>Standalone / External Lorebook Reference</span>
+    </div>
+    <p class="text-xs text-muted-foreground leading-relaxed">
+      Instead of or in addition to embedding lore inside this card, you can link
+      an external lorebook file. Entering a name here saves a reference to
+      <code class="bg-muted px-1.5 py-0.5 rounded font-mono text-[10px]"
+        >extensions.world_info</code
+      >
+      which third-party platforms (like SillyTavern) will automatically resolve.
+    </p>
+    <input
+      type="text"
+      bind:value={worldInfo}
+      disabled={generatingAll || activeGeneratingField !== null}
+      class="w-full border rounded-xl px-4 py-2.5 bg-background text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
+      placeholder="e.g. My_World_Lore_File"
+    />
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
@@ -84,7 +117,7 @@
       <label
         for="lorebook-title"
         class="text-xs font-bold uppercase text-muted-foreground tracking-wider"
-        >Grimoire Title</label
+        >Embedded Lorebook Name</label
       >
       <input
         id="lorebook-title"
@@ -92,14 +125,14 @@
         bind:value={characterBook.name}
         disabled={generatingAll || activeGeneratingField !== null}
         class="w-full border rounded-xl px-4 py-2.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-        placeholder="e.g. Grimoire of Spells"
+        placeholder="e.g. Merlin's Grimoire"
       />
     </div>
     <div class="space-y-1">
       <label
         for="lorebook-desc"
         class="text-xs font-bold uppercase text-muted-foreground tracking-wider"
-        >Book Description</label
+        >Embedded Book Description</label
       >
       <input
         id="lorebook-desc"
@@ -120,7 +153,7 @@
       <input
         type="text"
         bind:value={lorebookSearchQuery}
-        placeholder="Search lore entries by key or content..."
+        placeholder="Search active triggers, comments or entry content..."
         class="w-full text-xs bg-transparent focus:outline-none py-1 text-foreground"
       />
       {#if lorebookSearchQuery}
@@ -137,15 +170,16 @@
   <div class="space-y-4">
     {#if characterBook.entries.length === 0}
       <div
-        class="text-center py-10 border rounded-xl border-dashed text-sm text-muted-foreground bg-secondary/10"
+        class="text-center py-10 border rounded-xl border-dashed text-sm text-muted-foreground bg-secondary/10 animate-pulse"
       >
-        No lorebook entries yet. Click "Add Lore Entry" to create one.
+        No embedded lore entries. Click "Add Memory Entry" or link an external
+        world file above.
       </div>
     {:else if filteredLorebookEntries.length === 0}
       <div
         class="text-center py-10 border rounded-xl border-dashed text-sm text-muted-foreground bg-secondary/10"
       >
-        No matching entries found.
+        No matching memory triggers found.
       </div>
     {:else}
       {#each filteredLorebookEntries as entry, idx (entry.id)}
@@ -159,7 +193,7 @@
               <span
                 class="text-xs font-bold text-muted-foreground uppercase tracking-widest"
               >
-                Entry #{idx + 1}
+                Memory Entry #{idx + 1}
               </span>
               <!-- Enabled Toggle -->
               <button
@@ -170,9 +204,9 @@
                   : 'text-muted-foreground'}"
               >
                 {#if entry.enabled}
-                  <CheckSquare class="w-4 h-4" /> Enabled
+                  <CheckSquare class="w-4 h-4" /> Trigger Active
                 {:else}
-                  <Square class="w-4 h-4" /> Disabled
+                  <Square class="w-4 h-4" /> Trigger Bypassed
                 {/if}
               </button>
 
@@ -185,9 +219,9 @@
                   : 'text-muted-foreground'}"
               >
                 {#if entry.constant}
-                  <CheckSquare class="w-4 h-4" /> Constant
+                  <CheckSquare class="w-4 h-4" /> Always Injected
                 {:else}
-                  <Square class="w-4 h-4" /> Constant
+                  <Square class="w-4 h-4" /> Keyword Gated
                 {/if}
               </button>
             </div>
@@ -207,7 +241,7 @@
               <label
                 for="entry-keys-{idx}"
                 class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Trigger Keys (Comma-separated)</label
+                >Primary Keyword Triggers (Comma-separated)</label
               >
               <input
                 id="entry-keys-{idx}"
@@ -221,14 +255,14 @@
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. Fireball, flame, burn"
+                placeholder="e.g. library, ancient books, spell workshop"
               />
             </div>
             <div class="space-y-1">
               <label
                 for="entry-sec-keys-{idx}"
                 class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Secondary Keys (Optional)</label
+                >Secondary Co-Triggers (Requires both to trigger)</label
               >
               <input
                 id="entry-sec-keys-{idx}"
@@ -242,7 +276,7 @@
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. magic, wizard"
+                placeholder="e.g. shadows, magic"
               />
             </div>
           </div>
@@ -251,7 +285,7 @@
             <label
               for="entry-content-{idx}"
               class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-              >Lore Entry Content</label
+              >Injected Lore Fact (Injected on trigger match)</label
             >
             <textarea
               id="entry-content-{idx}"
@@ -259,7 +293,7 @@
               bind:value={entry.content}
               disabled={generatingAll || activeGeneratingField !== null}
               class="w-full border rounded-lg p-3 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
-              placeholder="Define lore details, location background, or rules..."
+              placeholder="e.g. The Library of Shadows houses cursed magical tomes forbidden to apprentices..."
             ></textarea>
           </div>
 
@@ -268,7 +302,7 @@
               <label
                 for="entry-comment-{idx}"
                 class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Internal Developer Comment</label
+                >Developer Notes</label
               >
               <input
                 id="entry-comment-{idx}"
@@ -276,14 +310,14 @@
                 bind:value={entry.comment}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="Internal developer notes..."
+                placeholder="e.g. Background for Merlin's magical academy"
               />
             </div>
             <div class="space-y-1">
               <label
                 for="entry-priority-{idx}"
                 class="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-                >Scan Insertion Priority</label
+                >Activation Priority Rank</label
               >
               <input
                 id="entry-priority-{idx}"
@@ -291,7 +325,7 @@
                 bind:value={entry.priority}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. 10"
+                placeholder="e.g. 10 (higher numbers activate first)"
               />
             </div>
           </div>

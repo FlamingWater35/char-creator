@@ -63,6 +63,9 @@
           entries: [],
         };
       }
+      if (character.data.worldInfo === undefined) {
+        character.data.worldInfo = "";
+      }
     } else {
       goto("/");
     }
@@ -529,6 +532,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           char_creator: {
             mainPrompt: character.data.mainPrompt,
           },
+          world_info: character.data.worldInfo || "",
         },
         creation_date: Math.floor(character.createdAt.getTime() / 1000),
         modification_date: Math.floor(character.updatedAt.getTime() / 1000),
@@ -573,6 +577,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             char_creator: {
               mainPrompt: character.data.mainPrompt,
             },
+            world_info: character.data.worldInfo || "",
             assets: (character.data.assets || []).reduce(
               (acc, asset) => {
                 acc[asset.name || asset.id] = asset.uri;
@@ -834,6 +839,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         <!-- Lorebook / Character Book Panel -->
         <Lorebook
           bind:characterBook={character.data.characterBook}
+          bind:worldInfo={character.data.worldInfo}
           {generatingAll}
           {activeGeneratingField}
         />

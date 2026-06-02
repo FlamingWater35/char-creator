@@ -45,6 +45,7 @@
           description: "",
           entries: [],
         },
+        worldInfo: "",
       },
     };
     await db.characters.add(newChar);
@@ -295,6 +296,13 @@
         };
       }
 
+      let worldInfo = "";
+      if (typeof data.extensions?.world_info === "string") {
+        worldInfo = data.extensions.world_info;
+      } else if (data.extensions?.world_info) {
+        worldInfo = JSON.stringify(data.extensions.world_info);
+      }
+
       const newChar: Character = {
         id: crypto.randomUUID(),
         name,
@@ -312,6 +320,7 @@
           image: base64Image || null,
           assets,
           characterBook,
+          worldInfo,
         },
       };
 
