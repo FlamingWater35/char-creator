@@ -152,36 +152,13 @@
 
       const exampleMessages = parseExampleMessages(data.mes_example);
 
-      let mainPrompt =
-        parsed.extensions?.char_creator?.main_prompt ||
-        data.extensions?.char_creator?.main_prompt ||
-        parsed.extensions?.char_creator?.mainPrompt ||
-        data.extensions?.char_creator?.mainPrompt ||
-        "";
-
-      if (!mainPrompt) {
-        const mainPromptRegex = /"main_prompt"\s*:\s*"((?:[^"\\]|\\.)*)"/i;
-        const match = metadata.match(mainPromptRegex);
-        if (match && match[1]) {
-          try {
-            mainPrompt = JSON.parse(`"${match[1]}"`);
-          } catch (e) {
-            mainPrompt = match[1];
-          }
-        }
-      }
-
-      if (!mainPrompt) {
-        mainPrompt = description.substring(0, 150) || name;
-      }
-
       const newChar: Character = {
         id: crypto.randomUUID(),
         name,
         createdAt: new Date(),
         updatedAt: new Date(),
         data: {
-          mainPrompt,
+          mainPrompt: description.substring(0, 150) || name,
           description,
           personality: data.personality || "",
           scenario: data.scenario || "",
