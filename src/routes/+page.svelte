@@ -111,6 +111,12 @@
       const data = parsed.data || parsed;
 
       const name = data.name || "Imported Character";
+
+      let mainPrompt = "";
+      if (data.extensions?.char_creator?.mainPrompt) {
+        mainPrompt = data.extensions.char_creator.mainPrompt;
+      }
+
       const fullDesc = data.description || "";
       let description = fullDesc;
       let backstory = "";
@@ -139,6 +145,10 @@
         }
       }
 
+      if (!mainPrompt) {
+        mainPrompt = description.substring(0, 150) || name;
+      }
+
       const reader = new FileReader();
       const base64Image = await new Promise<string>((resolve) => {
         reader.onload = (event) => resolve(event.target?.result as string);
@@ -158,7 +168,7 @@
         createdAt: new Date(),
         updatedAt: new Date(),
         data: {
-          mainPrompt: description.substring(0, 150) || name,
+          mainPrompt,
           description,
           personality: data.personality || "",
           scenario: data.scenario || "",
