@@ -1,11 +1,17 @@
 import Dexie, { type Table } from 'dexie';
 
+/**
+ * Defines the chat examples structure.
+ */
 export interface ExampleMessage {
   id: string;
   user: string;
   character: string;
 }
 
+/**
+ * Represents multimedia assets separate from the core profile.
+ */
 export interface CharacterAsset {
   id: string;
   characterId: string;
@@ -15,11 +21,17 @@ export interface CharacterAsset {
   ext: string;
 }
 
+/**
+ * Isolated high-res avatar image store.
+ */
 export interface CharacterImage {
   id: string;
   image: string | null;
 }
 
+/**
+ * Individual conditional Lorebook entries.
+ */
 export interface CharacterBookEntry {
   id: string;
   keys: string[];
@@ -31,12 +43,18 @@ export interface CharacterBookEntry {
   constant?: boolean;
 }
 
+/**
+ * Local schema container for embedded lorebooks.
+ */
 export interface CharacterBook {
   name: string;
   description?: string;
   entries: CharacterBookEntry[];
 }
 
+/**
+ * Core Character profile. Large binary assets are omitted to protect query performance.
+ */
 export interface Character {
   id: string;
   name: string;
@@ -57,6 +75,9 @@ export interface Character {
   };
 }
 
+/**
+ * Dexie-based local IndexedDB character manager.
+ */
 export class CharDB extends Dexie {
   characters!: Table<Character, string>;
   characterImages!: Table<CharacterImage, string>;
@@ -65,10 +86,12 @@ export class CharDB extends Dexie {
   constructor() {
     super('CharCreatorDB');
 
+    // Version 1: Initial database store setup
     this.version(1).stores({
       characters: 'id, name, createdAt, updatedAt'
     });
 
+    // Version 2: Schema restructures for lists and old textarea splits
     this.version(2).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -99,6 +122,7 @@ export class CharDB extends Dexie {
       });
     });
 
+    // Version 3: Adds support for base64 main avatars
     this.version(3).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -109,6 +133,7 @@ export class CharDB extends Dexie {
       });
     });
 
+    // Version 4: Adds support for relative characters associations
     this.version(4).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -119,6 +144,7 @@ export class CharDB extends Dexie {
       });
     });
 
+    // Version 5: Adds support for raw multimedia asset bundling
     this.version(5).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -129,6 +155,7 @@ export class CharDB extends Dexie {
       });
     });
 
+    // Version 6: Adds support for embedded lorebook structures
     this.version(6).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -139,6 +166,7 @@ export class CharDB extends Dexie {
       });
     });
 
+    // Version 7: Adds support for external standalone world info files
     this.version(7).stores({
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
@@ -149,7 +177,7 @@ export class CharDB extends Dexie {
       });
     });
 
-    // Version 8: Separates all binary data into isolated table stores to resolve toArray() lag.
+    // Version 8: Performance upgrade. Isolates heavy binary streams into distinct table stores.
     this.version(8).stores({
       characters: 'id, name, createdAt, updatedAt',
       characterImages: 'id',
@@ -158,14 +186,14 @@ export class CharDB extends Dexie {
       await tx.table('characters').toCollection().modify((char) => {
         if (char.data.image) {
           tx.table('characterImages').put({ id: char.id, image: char.data.image });
-          // @ts-ignore - Removing old legacy binary fields
+          // @ts-ignore - Cleaning deprecated legacy fields
           delete char.data.image;
         }
         if (char.data.assets && char.data.assets.length > 0) {
           for (const asset of char.data.assets) {
             tx.table('characterAssets').put({ ...asset, characterId: char.id });
           }
-          // @ts-ignore - Removing old legacy binary fields
+          // @ts-ignore - Cleaning deprecated legacy fields
           delete char.data.assets;
         }
         char.data.thumbnail = null;

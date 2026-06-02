@@ -24,6 +24,7 @@
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
+  // Sub-component Imports
   import MediaAssets from "$lib/components/editor/MediaAssets.svelte";
   import Lorebook from "$lib/components/editor/Lorebook.svelte";
   import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
@@ -42,7 +43,8 @@
   let generatingAll = $state(false);
   let copied = $state(false);
 
-  let saveState = $state<"idle" | "waiting" | "saving">("idle");
+  // Tracks active database writing status
+  let saveState = $state<"idle" | "waiting" | "saving" | "error">("idle");
   let isInitialLoad = true;
   let saveTimeout: ReturnType<typeof setTimeout>;
 
@@ -51,6 +53,10 @@
 
   let fileInput = $state<HTMLInputElement>();
 
+  /**
+   * Realtime context estimator representing average English word structures (characters / 4).
+   * Generates a token budget approximation without dragging in heavy tokenizer packages.
+   */
   let estimatedTokens = $derived.by(() => {
     if (!character) return 0;
     const d = character.data;
@@ -69,21 +75,37 @@
   onMount(async () => {
     if (!characterId) return goto("/");
 
-    const char = await db.characters.get(characterId);
-    if (!char) return goto("/");
+    try {
+      const char = await db.characters.get(characterId);
+      if (!char) {
+        dialogs.alert(
+          "The selected character record does not exist.",
+          "Not Found",
+        );
+        return goto("/");
+      }
+      character = char;
 
-    character = char;
+      // Extract isolated high-res image and assets list
+      const imgObj = await db.characterImages.get(characterId);
+      characterImage = imgObj?.image || null;
 
-    const imgObj = await db.characterImages.get(characterId);
-    characterImage = imgObj?.image || null;
+      characterAssets =
+        (await db.characterAssets
+          .where("characterId")
+          .equals(characterId)
+          .toArray()) || [];
+    } catch (err: any) {
+      console.error("Failed to load character:", err);
+      dialogs.alert(
+        "Could not load character definitions: " + err.message,
+        "Error",
+      );
+      goto("/");
+    } finally {
+      loading = false;
+    }
 
-    characterAssets =
-      (await db.characterAssets
-        .where("characterId")
-        .equals(characterId)
-        .toArray()) || [];
-
-    loading = false;
     window.addEventListener("beforeunload", handleBeforeUnload);
   });
 
@@ -94,8 +116,10 @@
     }
   });
 
+  // Watcher targeting automatic debounced background saves
   $effect(() => {
     if (character) {
+      // Binds watcher targets to tracking state
       const trigger = JSON.stringify({
         name: character.name,
         data: character.data,
@@ -113,11 +137,14 @@
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(() => {
           saveCharacter();
-        }, 1000);
+        }, 1000); // 1s Debounce
       });
     }
   });
 
+  /**
+   * Commits current active Svelte state snap payloads to IndexedDB tables.
+   */
   async function saveCharacter() {
     if (!character) return;
     saveState = "saving";
@@ -149,8 +176,8 @@
         }, 1000);
       }
     } catch (err) {
-      console.error("Autosave failed:", err);
-      saveState = "idle";
+      console.error("Background autosave failed:", err);
+      saveState = "error"; // Alert the user of DB write locks or quota caps
     }
   }
 
@@ -164,10 +191,14 @@
   function handleBeforeUnload(e: BeforeUnloadEvent) {
     forceImmediateSave();
     if (saveState === "waiting" || saveState === "saving") {
-      e.preventDefault();
+      e.preventDefault(); // Triggers browser confirmation block to preserve pending database streams
     }
   }
 
+  /**
+   * Converts uploaded user graphic files to lossless base64 original streams,
+   * and auto-generates lightweight JPEG thumbnails.
+   */
   async function handleImageUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -181,10 +212,13 @@
           character.data.thumbnail = await generateThumbnail(base64);
         }
       };
+      reader.onerror = () => {
+        dialogs.alert("Could not load image file.", "Error");
+      };
       reader.readAsDataURL(file);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      dialogs.alert("Failed to process image.", "Error");
+      dialogs.alert("Failed to process image file: " + error.message, "Error");
     }
   }
 
@@ -197,6 +231,9 @@
     }
   }
 
+  /**
+   * Dispatches generation completion calls to internal route servers.
+   */
   async function callAI(prompt: string, system?: string) {
     if (!settings.apiKey && settings.provider !== "custom") {
       dialogs.alert(
@@ -229,21 +266,34 @@
         }),
       });
 
-      const data = await res.json();
-      if (data.error) {
-        dialogs.alert("API Error: " + data.error, "Generation Failed");
+      if (!res.ok) {
+        const errPayload = await res.json().catch(() => ({}));
+        dialogs.alert(
+          errPayload.error || "The LLM endpoint returned an error status.",
+          "Generation Failed",
+        );
         return null;
       }
+
+      const data = await res.json();
       return data.result;
     } catch (e: any) {
-      if (e.name === "AbortError") return null;
-      dialogs.alert("Network error while calling AI.", "Error");
+      if (e.name === "AbortError" || aiAbortController.signal.aborted)
+        return null;
+      console.error("AI fetch failed:", e);
+      dialogs.alert(
+        "Network connection error: Failed to communicate with the model server.",
+        "Network Error",
+      );
       return null;
     } finally {
       aiAbortController = null;
     }
   }
 
+  /**
+   * Refines a specific textarea description parameter using AI completion.
+   */
   async function enhanceField(
     fieldName: string,
     currentContent: string,
@@ -257,6 +307,9 @@
     if (activeGeneratingField === fieldName) activeGeneratingField = null;
   }
 
+  /**
+   * Triggers the full system generation, requesting raw completion values in standard JSON.
+   */
   async function generateAll() {
     if (!character || !character.data.mainPrompt) {
       dialogs.alert(
@@ -379,6 +432,9 @@
     generatingAll = false;
   }
 
+  /**
+   * Formats specifications parameters and compiles base64 PNG card files.
+   */
   function downloadCardPNG() {
     if (!character) return;
 
@@ -413,10 +469,12 @@
       ext: asset.ext,
     }));
 
+    // Legacy standard mappings for strict third-party parsers
     const characterBookData = {
       name: character.data.characterBook?.name || "",
       description: character.data.characterBook?.description || "",
       entries: (character.data.characterBook?.entries || []).map((entry) => ({
+        id: entry.id,
         keys: entry.keys,
         key: entry.keys,
         secondary_keys: entry.secondary_keys || [],
@@ -538,9 +596,12 @@
         character.name.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "character";
       a.download = `${safeName}_card.png`;
       a.click();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      dialogs.alert("Failed to generate Character Card.", "Export Error");
+      dialogs.alert(
+        "Failed to compile Card graphic binary: " + e.message,
+        "Export Error",
+      );
     }
   }
 
@@ -582,10 +643,18 @@
     }
 
     const finalExport = "---\n\n" + parts.join("\n\n---\n\n") + "\n\n---";
-    navigator.clipboard.writeText(finalExport).then(() => {
-      copied = true;
-      setTimeout(() => (copied = false), 2000);
-    });
+    navigator.clipboard
+      .writeText(finalExport)
+      .then(() => {
+        copied = true;
+        setTimeout(() => (copied = false), 2000);
+      })
+      .catch(() => {
+        dialogs.alert(
+          "Failed to write to clipboard. Browser permissions might block clipboard operations.",
+          "Clipboard Error",
+        );
+      });
   }
 </script>
 
@@ -780,6 +849,7 @@
             ></textarea>
           </div>
 
+          <!-- FIRST MESSAGES -->
           <FirstGreetings
             bind:firstMessages={character.data.firstMessages}
             {generatingAll}
@@ -788,6 +858,7 @@
             oncancel={cancelGeneration}
           />
 
+          <!-- EXAMPLE MESSAGES -->
           <ExampleDialogues
             bind:exampleMessages={character.data.exampleMessages}
             {generatingAll}
@@ -825,7 +896,7 @@
         />
       </div>
 
-      <!-- Floating Token and Save Status Indicator -->
+      <!-- Realtime Token and Database Status Indicators -->
       <div class="fixed bottom-6 right-6 z-40 flex items-center gap-3">
         <div
           class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
@@ -841,6 +912,11 @@
             <span>Unsaved changes...</span>
           {:else if saveState === "saving"}
             <Loader2 class="w-3 h-3 animate-spin" /> Saving...
+          {:else if saveState === "error"}
+            <div
+              class="w-2 h-2 rounded-full bg-destructive animate-pulse"
+            ></div>
+            <span class="text-destructive font-bold">Failed to save!</span>
           {:else}
             <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
             <span>Auto-Saved</span>

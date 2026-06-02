@@ -26,6 +26,7 @@
   let loading = $state(true);
   let fileInputImport = $state<HTMLInputElement>();
 
+  // Real-time local search derived state
   let filteredCharacters = $derived(
     characters.filter((c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -33,10 +34,23 @@
   );
 
   onMount(async () => {
-    characters = await db.characters.orderBy("updatedAt").reverse().toArray();
-    loading = false;
+    try {
+      // Fast, lightweight query that omits heavy base64 assets
+      characters = await db.characters.orderBy("updatedAt").reverse().toArray();
+    } catch (err: any) {
+      console.error("Failed to query characters:", err);
+      dialogs.alert(
+        "Could not load character records from database: " + err.message,
+        "Database Error",
+      );
+    } finally {
+      loading = false;
+    }
   });
 
+  /**
+   * Initializes and commits a default character template to IndexedDB.
+   */
   async function createNew() {
     const id = crypto.randomUUID();
     const newChar: Character = {
@@ -62,22 +76,44 @@
         worldInfo: "",
       },
     };
-    await db.characters.add(newChar);
-    goto(`/editor/${id}`);
+
+    try {
+      await db.characters.add(newChar);
+      goto(`/editor/${id}`);
+    } catch (err: any) {
+      console.error("Insertion failed:", err);
+      dialogs.alert(
+        "Could not initialize character file: " + err.message,
+        "Error",
+      );
+    }
   }
 
+  /**
+   * Wipes a character and all its decoupled binary/asset dependencies.
+   * @param id Character UUID.
+   */
   async function deleteChar(id: string) {
     const confirmed = await dialogs.confirm(
       "Are you sure you want to delete this character? This cannot be undone.",
     );
-    if (confirmed) {
+    if (!confirmed) return;
+
+    try {
       await db.characters.delete(id);
       await db.characterImages.delete(id);
       await db.characterAssets.where("characterId").equals(id).delete();
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
+    } catch (err: any) {
+      console.error("Deletion failed:", err);
+      dialogs.alert("Failed to wipe record: " + err.message, "Wipe Failed");
     }
   }
 
+  /**
+   * Parses legacy Tavern greeting text blocks into structured example messages.
+   * @param mesExample Text block payload.
+   */
   function parseExampleMessages(
     mesExample: string | undefined | null,
   ): ExampleMessage[] {
@@ -121,6 +157,9 @@
     return examples;
   }
 
+  /**
+   * Cleans and splits composite description payloads on import.
+   */
   function extractSection(
     text: string,
     header: string,
@@ -138,6 +177,10 @@
     return { content: "", cleanedText: text };
   }
 
+  /**
+   * Imports a PNG character card, processes its metadata payload,
+   * auto-generates thumbnails, and splits binary data into separate tables.
+   */
   async function handleImportCard(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -147,7 +190,7 @@
       const metadata = await extractCharacterCardMetadata(arrayBuffer);
       if (!metadata) {
         await dialogs.alert(
-          "No character card metadata (chara or ccv3) found in this image.",
+          "No valid character card metadata (chara or ccv3) found in this image.",
           "Invalid Card",
         );
         return;
@@ -156,9 +199,9 @@
       let parsed;
       try {
         parsed = JSON.parse(metadata);
-      } catch (e) {
+      } catch (err) {
         await dialogs.alert(
-          "Failed to parse card metadata JSON. The card might be corrupted.",
+          "Failed to parse card metadata. The file structure might be corrupted.",
           "Invalid Data",
         );
         return;
@@ -212,6 +255,7 @@
         reader.onload = (event) => resolve(event.target?.result as string);
         reader.readAsDataURL(file);
       });
+
       const thumbnail = base64Image
         ? await generateThumbnail(base64Image)
         : null;
@@ -354,7 +398,7 @@
         "Import Successful",
       );
     } catch (error: any) {
-      console.error(error);
+      console.error("Import failure:", error);
       dialogs.alert(
         "Failed to import character card: " + error.message,
         "Import Failed",
@@ -370,7 +414,7 @@
 </svelte:head>
 
 <div
-  class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4"
+  class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4 animate-fade-in"
 >
   <h1 class="text-3xl font-bold tracking-tight">Your Characters</h1>
   <div
@@ -378,34 +422,36 @@
   >
     <button
       onclick={() => fileInputImport?.click()}
-      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer"
+      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer shadow-sm"
     >
       <FileUp class="w-4 h-4" /> Import PNG Card
     </button>
     <button
       onclick={createNew}
-      class="flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full sm:w-auto cursor-pointer"
+      class="flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full sm:w-auto cursor-pointer shadow-sm"
     >
       <Plus class="w-4 h-4" /> Create New Character
     </button>
   </div>
 </div>
 
+<!-- Instant filter search input -->
 {#if characters.length > 0}
   <div
-    class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
+    class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
   >
     <Search class="w-5 h-5 text-muted-foreground mr-3" />
     <input
       type="text"
       bind:value={searchQuery}
       placeholder="Search characters by name..."
-      class="w-full bg-transparent focus:outline-none text-sm font-medium"
+      class="w-full bg-transparent focus:outline-none text-sm font-medium text-foreground"
     />
     {#if searchQuery}
       <button
         onclick={() => (searchQuery = "")}
-        class="p-1 text-muted-foreground hover:text-foreground"
+        class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        aria-label="Clear Search Query"
       >
         <X class="w-4 h-4" />
       </button>
@@ -432,7 +478,7 @@
 {:else if characters.length === 0}
   <div
     in:fade={{ duration: 200 }}
-    class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
+    class="text-center py-20 border border-dashed rounded-lg bg-card px-4 shadow-sm"
   >
     <h2 class="text-xl font-semibold mb-2">No characters found</h2>
     <p class="text-muted-foreground mb-6">
@@ -443,12 +489,12 @@
     >
       <button
         onclick={createNew}
-        class="w-full sm:w-auto bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer"
+        class="w-full sm:w-auto bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer shadow-sm"
         >Get Started</button
       >
       <button
         onclick={() => fileInputImport?.click()}
-        class="w-full sm:w-auto bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium cursor-pointer"
+        class="w-full sm:w-auto bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium cursor-pointer shadow-sm"
         >Import Card</button
       >
     </div>
@@ -467,7 +513,7 @@
   >
     {#each filteredCharacters as char (char.id)}
       <div
-        class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow"
+        class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-all"
       >
         <div>
           <div class="flex items-center gap-4 mb-4">

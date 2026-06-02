@@ -1,3 +1,6 @@
+/**
+ * PNG CRC-32 Lookup Table for fast cyclic redundancy check calculations.
+ */
 const crcTable: number[] = [];
 for (let i = 0; i < 256; i++) {
   let c = i;
@@ -8,6 +11,11 @@ for (let i = 0; i < 256; i++) {
   crcTable[i] = c;
 }
 
+/**
+ * Computes the CRC-32 checksum for a given byte buffer.
+ * @param buffer The input byte array.
+ * @returns The computed 32-bit CRC.
+ */
 function crc32(buffer: Uint8Array): number {
   let crc = 0xffffffff;
   for (let i = 0; i < buffer.length; i++) {
@@ -16,7 +24,12 @@ function crc32(buffer: Uint8Array): number {
   return crc ^ 0xffffffff;
 }
 
-// Memory-safe base64 encoding chunk by chunk to prevent max call stack limits
+/**
+ * Converts a Uint8Array to a base64 string in a memory-safe manner
+ * by processing chunks, avoiding call stack size limits on large arrays.
+ * @param u8Arr Input byte buffer.
+ * @returns Base64 encoded string.
+ */
 function uint8ToBase64(u8Arr: Uint8Array): string {
   let binary = '';
   const CHUNK_SIZE = 8192;
@@ -26,6 +39,12 @@ function uint8ToBase64(u8Arr: Uint8Array): string {
   return btoa(binary);
 }
 
+/**
+ * Creates a standard uncompressed tEXt chunk for PNG metadata injection.
+ * @param keyword Metadata key (e.g. 'ccv3', 'chara').
+ * @param dataB64 Base64 encoded JSON string.
+ * @returns Formatted PNG tEXt chunk bytes.
+ */
 function createTextChunk(keyword: string, dataB64: string): Uint8Array {
   const textStr = keyword + '\0' + dataB64;
   const dataEncoder = new TextEncoder();
@@ -34,25 +53,33 @@ function createTextChunk(keyword: string, dataB64: string): Uint8Array {
   const chunk = new Uint8Array(4 + 4 + dataBytes.length + 4);
   const view = new DataView(chunk.buffer);
 
-  // Length
+  // Length of data segment
   view.setUint32(0, dataBytes.length, false);
 
-  // Type: tEXt (116, 69, 88, 116)
+  // Chunk Type: tEXt (116, 69, 88, 116)
   chunk[4] = 116; chunk[5] = 69; chunk[6] = 88; chunk[7] = 116;
 
-  // Data
+  // Insert Data segment
   chunk.set(dataBytes, 8);
 
-  // CRC over Type + Data
+  // Calculate and write CRC over Type and Data
   const crcInput = chunk.subarray(4, 8 + dataBytes.length);
   view.setUint32(8 + dataBytes.length, crc32(crcInput), false);
 
   return chunk;
 }
 
+/**
+ * Injects custom metadata chunks right before the PNG's IEND chunk.
+ * UTF-8 compatible encoding ensures complete support for multilingual characters.
+ * @param base64Image Original PNG Data URL.
+ * @param v3JsonString Standard SillyTavern V3 spec payload.
+ * @param v2JsonString Standard SillyTavern V2 spec payload.
+ * @returns Metadata-injected Base64 PNG Data URL.
+ */
 export function injectCharacterCardMetadata(base64Image: string, v3JsonString: string, v2JsonString: string): string {
   const b64DataPart = base64Image.split(',')[1];
-  if (!b64DataPart) throw new Error("Invalid base64 image data");
+  if (!b64DataPart) throw new Error("Invalid base64 image data structure");
 
   const binaryString = atob(b64DataPart);
   const len = binaryString.length;
@@ -61,20 +88,19 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
     bytes[i] = binaryString.charCodeAt(i);
   }
 
-  // UTF-8 base64 encoding guarantees robust Unicode compatibility!
   const utf8Encoder = new TextEncoder();
   const v3Data = uint8ToBase64(utf8Encoder.encode(v3JsonString));
   const v2Data = uint8ToBase64(utf8Encoder.encode(v2JsonString));
 
-  // For maximum compatibility, inject both V2 and V3 spec tags
+  // Generate chunks for both specs to ensure universal compatibility
   const v3Chunk = createTextChunk('ccv3', v3Data);
   const v2Chunk = createTextChunk('chara', v2Data);
 
-  // Locate the start of the IEND chunk (usually at the very end of file)
+  // Locate the IEND chunk position (step back from end of file)
   let iendPos = bytes.length - 12;
   for (let i = bytes.length - 4; i >= 0; i--) {
     if (bytes[i] === 73 && bytes[i+1] === 69 && bytes[i+2] === 78 && bytes[i+3] === 68) {
-      iendPos = i - 4; // Step back to include the 4-byte chunk length
+      iendPos = i - 4;
       break;
     }
   }
@@ -91,13 +117,19 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
   return 'data:image/png;base64,' + uint8ToBase64(newPng);
 }
 
+/**
+ * Extracts and decodes character card metadata from standard uncompressed tEXt
+ * or zlib-compressed zTXt PNG chunks.
+ * @param arrayBuffer The binary file buffer.
+ * @returns Decoded JSON metadata string, or null if no spec matches are found.
+ */
 export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Promise<string | null> {
   const view = new DataView(arrayBuffer);
   const bytes = new Uint8Array(arrayBuffer);
 
-  // Verify PNG signature
+  // Validate standard PNG file signature
   if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
-    throw new Error("Invalid PNG file signature");
+    throw new Error("Invalid PNG file signature: File is not a valid PNG.");
   }
 
   let pos = 8;
@@ -131,7 +163,7 @@ export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Pr
             }
             return decoder.decode(jsonBytes);
           } catch (e) {
-            console.error("Failed to decode chunk data:", e);
+            console.error("Failed to decode tEXt chunk segment:", e);
           }
         }
       }
@@ -148,14 +180,13 @@ export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Pr
         const keyword = decoder.decode(chunkData.subarray(0, nullPos));
         if (keyword === 'ccv3' || keyword === 'chara') {
           const compressionMethod = chunkData[nullPos + 1];
-          if (compressionMethod === 0) { // 0 represents deflate/zlib
+          if (compressionMethod === 0) { // Method 0 indicates zlib deflate
             try {
               const compressedData = chunkData.subarray(nullPos + 2);
               const decompressed = await decompressZlib(compressedData);
               const decodedStr = decoder.decode(decompressed);
 
               try {
-                // If the compressed payload is base64 encoded JSON
                 const binaryString = atob(decodedStr.trim());
                 const len = binaryString.length;
                 const jsonBytes = new Uint8Array(len);
@@ -164,11 +195,10 @@ export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Pr
                 }
                 return decoder.decode(jsonBytes);
               } catch {
-                // Return plain JSON string if base64 decoding fails
-                return decodedStr;
+                return decodedStr; // Falls back to raw JSON if payload was not base64-wrapped
               }
             } catch (e) {
-              console.error("Failed to decompress zTXt chunk data:", e);
+              console.error("Failed to decompress zTXt metadata segment:", e);
             }
           }
         }
@@ -181,6 +211,12 @@ export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Pr
   return null;
 }
 
+/**
+ * Asynchronously decompresses compressed zlib byte streams.
+ * Uses strict 'unknown as BlobPart' casting to resolve TypeScript 5.7+ generic ArrayBufferLike mismatches.
+ * @param compressedBytes Compressed deflate bytes.
+ * @returns Decompressed byte array.
+ */
 async function decompressZlib(compressedBytes: Uint8Array): Promise<Uint8Array> {
   const blob = new Blob([compressedBytes as unknown as BlobPart]);
   const ds = new DecompressionStream("deflate");
@@ -190,6 +226,10 @@ async function decompressZlib(compressedBytes: Uint8Array): Promise<Uint8Array> 
   return new Uint8Array(buffer);
 }
 
+/**
+ * Generates a default black fallback PNG when a card contains no avatar image.
+ * @returns Fallback Base64 PNG Data URL.
+ */
 export function generateDefaultBlackPNG(): string {
   const canvas = document.createElement('canvas');
   canvas.width = 400;
@@ -202,6 +242,12 @@ export function generateDefaultBlackPNG(): string {
   return canvas.toDataURL('image/png');
 }
 
+/**
+ * Generates an optimized JPEG thumbnail for the dashboard view, avoiding heavy IndexedDB overheads.
+ * @param base64 High-res source image Base64.
+ * @param maxSize Maximum thumbnail dimensions.
+ * @returns Ultra-compressed JPEG Base64.
+ */
 export async function generateThumbnail(base64: string, maxSize = 128): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -218,13 +264,12 @@ export async function generateThumbnail(base64: string, maxSize = 128): Promise<
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.drawImage(img, 0, 0, width, height);
-        // Using JPEG format for thumbnails to heavily optimize database query arrays
         resolve(canvas.toDataURL("image/jpeg", 0.7));
       } else {
-        reject(new Error("Failed to get canvas context"));
+        reject(new Error("Failed to construct thumbnail canvas context"));
       }
     };
-    img.onerror = () => reject(new Error("Invalid image"));
+    img.onerror = () => reject(new Error("Failed to process image format"));
     img.src = base64;
   });
 }
