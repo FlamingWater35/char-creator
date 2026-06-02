@@ -20,6 +20,10 @@ class Settings {
   genRelatedCharacters = $state(false);
 
   constructor() {
+    this.load();
+  }
+
+  load() {
     if (typeof window !== 'undefined') {
       this.apiKey = localStorage.getItem('or_key') || '';
       this.model = localStorage.getItem('or_model') || 'openai/gpt-4o';

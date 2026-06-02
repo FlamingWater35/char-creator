@@ -38,6 +38,8 @@
   );
 
   onMount(async () => {
+    settings.load();
+
     themePreference = localStorage.getItem("mode-watcher-mode") || "system";
 
     loadingModels = true;
@@ -430,8 +432,7 @@
           bind:checked={settings.genRelatedCharacters}
           class="accent-blue-600 rounded border-border"
         />
-        <span class="text-sm font-medium">Related Characters (Default Off)</span
-        >
+        <span class="text-sm font-medium">Related Characters</span>
       </label>
     </div>
 

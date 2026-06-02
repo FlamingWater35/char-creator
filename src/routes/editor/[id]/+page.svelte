@@ -620,7 +620,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             use:autoresize={character.data.mainPrompt}
             bind:value={character.data.mainPrompt}
             class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25"
-            placeholder="e.g. A grumpy but brilliant dwarven blacksmith..."
+            placeholder="e.g. A 20 years old female student who values friendship above everything else..."
           ></textarea>
         </div>
 
