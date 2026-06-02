@@ -53,13 +53,13 @@
     }
     loading = false;
 
-    window.addEventListener("beforeunload", forceImmediateSave);
+    window.addEventListener("beforeunload", handleBeforeUnload);
   });
 
   onDestroy(() => {
     forceImmediateSave();
     if (typeof window !== "undefined") {
-      window.removeEventListener("beforeunload", forceImmediateSave);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     }
   });
 
@@ -111,6 +111,13 @@
     if (saveState === "waiting" && character) {
       clearTimeout(saveTimeout);
       saveCharacter();
+    }
+  }
+
+  function handleBeforeUnload(e: BeforeUnloadEvent) {
+    forceImmediateSave();
+    if (saveState === "waiting" || saveState === "saving") {
+      e.preventDefault();
     }
   }
 

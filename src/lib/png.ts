@@ -91,7 +91,7 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
   return 'data:image/png;base64,' + uint8ToBase64(newPng);
 }
 
-export function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): string | null {
+export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Promise<string | null> {
   const view = new DataView(arrayBuffer);
   const bytes = new Uint8Array(arrayBuffer);
 
@@ -132,7 +132,44 @@ export function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): string |
             return decoder.decode(jsonBytes);
           } catch (e) {
             console.error("Failed to decode chunk data:", e);
-            // Will fall through and search for alternative fallback chunks
+          }
+        }
+      }
+    } else if (type === 'zTXt') {
+      const chunkData = bytes.subarray(pos + 8, pos + 8 + length);
+      let nullPos = -1;
+      for (let i = 0; i < chunkData.length; i++) {
+        if (chunkData[i] === 0) {
+          nullPos = i;
+          break;
+        }
+      }
+      if (nullPos !== -1) {
+        const keyword = decoder.decode(chunkData.subarray(0, nullPos));
+        if (keyword === 'ccv3' || keyword === 'chara') {
+          const compressionMethod = chunkData[nullPos + 1];
+          if (compressionMethod === 0) { // 0 represents deflate/zlib
+            try {
+              const compressedData = chunkData.subarray(nullPos + 2);
+              const decompressed = await decompressZlib(compressedData);
+              const decodedStr = decoder.decode(decompressed);
+
+              try {
+                // If the compressed payload is base64 encoded JSON
+                const binaryString = atob(decodedStr.trim());
+                const len = binaryString.length;
+                const jsonBytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                  jsonBytes[i] = binaryString.charCodeAt(i);
+                }
+                return decoder.decode(jsonBytes);
+              } catch {
+                // Return plain JSON string if base64 decoding fails
+                return decodedStr;
+              }
+            } catch (e) {
+              console.error("Failed to decompress zTXt chunk data:", e);
+            }
           }
         }
       }
@@ -142,6 +179,15 @@ export function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): string |
   }
 
   return null;
+}
+
+async function decompressZlib(compressedBytes: Uint8Array): Promise<Uint8Array> {
+  const blob = new Blob([compressedBytes as unknown as BlobPart]);
+  const ds = new DecompressionStream("deflate");
+  const decompressedStream = blob.stream().pipeThrough(ds);
+  const response = new Response(decompressedStream);
+  const buffer = await response.arrayBuffer();
+  return new Uint8Array(buffer);
 }
 
 export function generateDefaultBlackPNG(): string {

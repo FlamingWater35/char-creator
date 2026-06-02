@@ -115,7 +115,7 @@
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const metadata = extractCharacterCardMetadata(arrayBuffer);
+      const metadata = await extractCharacterCardMetadata(arrayBuffer);
       if (!metadata) {
         await dialogs.alert(
           "No character card metadata (chara or ccv3) found in this image.",

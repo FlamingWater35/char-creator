@@ -99,9 +99,14 @@
     </div>
   </header>
 
-  <main class="flex-1 container mx-auto px-4 py-6 sm:py-10">
+  <main
+    class="flex-1 container mx-auto px-4 py-6 sm:py-10 grid grid-cols-1 grid-rows-1"
+  >
     {#key $page.url.pathname}
-      <div in:fade={{ duration: 200, delay: 100 }} class="w-full">
+      <div
+        in:fade={{ duration: 200, delay: 100 }}
+        class="w-full col-start-1 row-start-1"
+      >
         {@render children()}
       </div>
     {/key}
