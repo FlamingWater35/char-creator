@@ -152,13 +152,18 @@
 
       const exampleMessages = parseExampleMessages(data.mes_example);
 
+      let mainPrompt = data.extensions?.char_creator?.main_prompt || "";
+      if (!mainPrompt) {
+        mainPrompt = description.substring(0, 150) || name;
+      }
+
       const newChar: Character = {
         id: crypto.randomUUID(),
         name,
         createdAt: new Date(),
         updatedAt: new Date(),
         data: {
-          mainPrompt: description.substring(0, 150) || name,
+          mainPrompt,
           description,
           personality: data.personality || "",
           scenario: data.scenario || "",

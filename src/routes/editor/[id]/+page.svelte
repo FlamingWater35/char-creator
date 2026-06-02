@@ -390,7 +390,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           extensions: {},
         },
         assets: [],
-        extensions: {},
+        extensions: {
+          char_creator: {
+            main_prompt: character.data.mainPrompt,
+          },
+        },
         creation_date: Math.floor(character.createdAt.getTime() / 1000),
         modification_date: Math.floor(character.updatedAt.getTime() / 1000),
       },
