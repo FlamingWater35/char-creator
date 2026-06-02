@@ -6,6 +6,14 @@ export interface ExampleMessage {
   character: string;
 }
 
+export interface CharacterAsset {
+  id: string;
+  name: string;
+  type: 'image' | 'avatar' | 'voice';
+  uri: string;
+  ext: string;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -21,6 +29,7 @@ export interface Character {
     exampleMessages: ExampleMessage[];
     image?: string | null;
     relatedCharacters: string;
+    assets?: CharacterAsset[];
   };
 }
 
@@ -83,6 +92,17 @@ export class CharDB extends Dexie {
       return tx.table('characters').toCollection().modify(char => {
         if (char.data.relatedCharacters === undefined) {
           char.data.relatedCharacters = '';
+        }
+      });
+    });
+
+    // Version 5: Adds support for character assets list
+    this.version(5).stores({
+      characters: 'id, name, createdAt, updatedAt'
+    }).upgrade(tx => {
+      return tx.table('characters').toCollection().modify(char => {
+        if (!char.data.assets) {
+          char.data.assets = [];
         }
       });
     });

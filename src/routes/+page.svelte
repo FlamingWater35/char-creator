@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { db, type Character, type ExampleMessage } from "$lib/db";
+  import {
+    db,
+    type Character,
+    type ExampleMessage,
+    type CharacterAsset,
+  } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
   import { Plus, Trash2, Edit, Loader2, FileUp } from "@lucide/svelte";
@@ -33,6 +38,7 @@
         firstMessages: [""],
         exampleMessages: [],
         image: null,
+        assets: [],
       },
     };
     await db.characters.add(newChar);
@@ -194,6 +200,62 @@
 
       const exampleMessages = parseExampleMessages(data.mes_example);
 
+      let assets: CharacterAsset[] = [];
+
+      if (Array.isArray(data.assets)) {
+        assets = data.assets
+          .map((asset: any) => ({
+            id: crypto.randomUUID(),
+            name: asset.name || "unnamed_asset",
+            type:
+              asset.type === "avatar" || asset.type === "voice"
+                ? asset.type
+                : "image",
+            uri: asset.uri || "",
+            ext: asset.ext || "png",
+          }))
+          .filter((asset: CharacterAsset) => asset.uri);
+      } else if (data.extensions?.assets) {
+        const v2Assets = data.extensions.assets;
+        if (Array.isArray(v2Assets)) {
+          assets = v2Assets
+            .map((asset: any) => ({
+              id: crypto.randomUUID(),
+              name: asset.name || "unnamed_asset",
+              type:
+                asset.type === "avatar" || asset.type === "voice"
+                  ? asset.type
+                  : "image",
+              uri: asset.uri || "",
+              ext: asset.ext || "png",
+            }))
+            .filter((asset: CharacterAsset) => asset.uri);
+        } else if (typeof v2Assets === "object") {
+          Object.entries(v2Assets).forEach(([key, val]) => {
+            if (typeof val === "string" && val.startsWith("data:")) {
+              let type: "image" | "avatar" | "voice" = "image";
+              if (key.includes("voice") || key.includes("audio"))
+                type = "voice";
+              else if (key.includes("avatar")) type = "avatar";
+
+              let ext = "png";
+              const match = val.match(
+                /data:[a-zA-Z0-9+]+\/([a-zA-Z0-9+]+);base64/,
+              );
+              if (match) ext = match[1];
+
+              assets.push({
+                id: crypto.randomUUID(),
+                name: key,
+                type,
+                uri: val,
+                ext,
+              });
+            }
+          });
+        }
+      }
+
       const newChar: Character = {
         id: crypto.randomUUID(),
         name,
@@ -209,13 +271,14 @@
           firstMessages,
           exampleMessages,
           image: base64Image || null,
+          assets,
         },
       };
 
       await db.characters.add(newChar);
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
       await dialogs.alert(
-        `Character "${name}" imported successfully!`,
+        `Character "${name}" imported successfully with ${assets.length} extra media assets!`,
         "Import Successful",
       );
     } catch (error: any) {

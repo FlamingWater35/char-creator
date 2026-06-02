@@ -86,6 +86,7 @@
       genExampleMessages: settings.genExampleMessages,
       genRelatedCharacters: settings.genRelatedCharacters,
       mergeTraitsOnExport: settings.mergeTraitsOnExport,
+      exportVersion: settings.exportVersion,
     };
 
     settings.save();
@@ -180,6 +181,7 @@
           genExampleMessages: settings.genExampleMessages,
           genRelatedCharacters: settings.genRelatedCharacters,
           mergeTraitsOnExport: settings.mergeTraitsOnExport,
+          exportVersion: settings.exportVersion,
         },
         characters: allCharacters,
       };
@@ -258,6 +260,8 @@
           settings.genRelatedCharacters = s.genRelatedCharacters;
         if (typeof s.mergeTraitsOnExport === "boolean")
           settings.mergeTraitsOnExport = s.mergeTraitsOnExport;
+        if (s.exportVersion === "v2" || s.exportVersion === "v3")
+          settings.exportVersion = s.exportVersion;
 
         settings.save();
       }
@@ -286,6 +290,7 @@
                 : [],
               image: char.data?.image || null,
               relatedCharacters: char.data?.relatedCharacters || "",
+              assets: Array.isArray(char.data?.assets) ? char.data.assets : [],
             },
           };
 
@@ -737,6 +742,27 @@
             <FileDown class="w-5 h-5" />
           </div>
           <h2 class="text-xl font-bold">Export Compatibility</h2>
+        </div>
+
+        <!-- Export Spec Version Selector -->
+        <div
+          class="flex flex-col gap-3 p-4 border rounded-xl bg-background shadow-sm"
+        >
+          <label class="font-bold text-sm" for="exportVersion"
+            >Export Character Card Format</label
+          >
+          <select
+            id="exportVersion"
+            bind:value={settings.exportVersion}
+            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all text-sm"
+          >
+            <option value="v3">SillyTavern V3 (Standard / Recommended)</option>
+            <option value="v2">SillyTavern V2 (Legacy Compatibility)</option>
+          </select>
+          <p class="text-[11px] text-muted-foreground">
+            V3 encodes extra layered multimedia assets inside a native array. V2
+            encodes assets inside the extensions envelope.
+          </p>
         </div>
 
         <button

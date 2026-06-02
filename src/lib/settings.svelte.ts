@@ -25,6 +25,7 @@ class Settings {
 
   // Export Compatibility parameters
   mergeTraitsOnExport = $state(false);
+  exportVersion = $state<'v2' | 'v3'>('v3');
 
   constructor() {
     this.load();
@@ -54,6 +55,7 @@ class Settings {
       this.genRelatedCharacters = localStorage.getItem('or_gen_rchar') === 'true';
 
       this.mergeTraitsOnExport = localStorage.getItem('or_merge_export') === 'true';
+      this.exportVersion = (localStorage.getItem('or_export_version') as 'v2' | 'v3') || 'v3';
     }
   }
 
@@ -81,6 +83,7 @@ class Settings {
       localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
 
       localStorage.setItem('or_merge_export', this.mergeTraitsOnExport ? 'true' : 'false');
+      localStorage.setItem('or_export_version', this.exportVersion);
     }
   }
 
@@ -103,6 +106,7 @@ class Settings {
     this.genExampleMessages = true;
     this.genRelatedCharacters = false;
     this.mergeTraitsOnExport = false;
+    this.exportVersion = 'v3';
     this.save();
   }
 }
