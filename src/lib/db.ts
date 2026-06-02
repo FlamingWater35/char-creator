@@ -14,6 +14,23 @@ export interface CharacterAsset {
   ext: string;
 }
 
+export interface CharacterBookEntry {
+  id: string;
+  keys: string[];
+  secondary_keys?: string[];
+  content: string;
+  enabled: boolean;
+  priority?: number;
+  comment?: string;
+  constant?: boolean;
+}
+
+export interface CharacterBook {
+  name: string;
+  description?: string;
+  entries: CharacterBookEntry[];
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -29,7 +46,8 @@ export interface Character {
     exampleMessages: ExampleMessage[];
     image?: string | null;
     relatedCharacters: string;
-    assets?: CharacterAsset[];
+    assets: CharacterAsset[];
+    characterBook: CharacterBook;
   };
 }
 
@@ -103,6 +121,21 @@ export class CharDB extends Dexie {
       return tx.table('characters').toCollection().modify(char => {
         if (!char.data.assets) {
           char.data.assets = [];
+        }
+      });
+    });
+
+    // Version 6: Adds support for character book (lorebook)
+    this.version(6).stores({
+      characters: 'id, name, createdAt, updatedAt'
+    }).upgrade(tx => {
+      return tx.table('characters').toCollection().modify(char => {
+        if (!char.data.characterBook) {
+          char.data.characterBook = {
+            name: '',
+            description: '',
+            entries: []
+          };
         }
       });
     });

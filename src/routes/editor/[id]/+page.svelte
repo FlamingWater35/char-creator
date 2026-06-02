@@ -15,15 +15,20 @@
     Loader2,
     Save,
     ArrowLeft,
-    Plus,
-    Trash2,
     Copy,
     Check,
-    X,
     ImagePlus,
     Download,
+    X,
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
+
+  // Sub-component Imports
+  import MediaAssets from "$lib/components/editor/MediaAssets.svelte";
+  import Lorebook from "$lib/components/editor/Lorebook.svelte";
+  import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
+  import ExampleDialogues from "$lib/components/editor/ExampleDialogues.svelte";
+  import Subfields from "$lib/components/editor/Subfields.svelte";
 
   let characterId = $derived($page.params.id as string);
   const aiSystemPrompt =
@@ -42,7 +47,6 @@
   let aiAbortController = $state<AbortController | null>(null);
 
   let fileInput = $state<HTMLInputElement>();
-  let fileInputAsset = $state<HTMLInputElement>();
 
   onMount(async () => {
     if (!characterId) return goto("/");
@@ -51,6 +55,13 @@
       character = char;
       if (!character.data.assets) {
         character.data.assets = [];
+      }
+      if (!character.data.characterBook) {
+        character.data.characterBook = {
+          name: "",
+          description: "",
+          entries: [],
+        };
       }
     } else {
       goto("/");
@@ -175,51 +186,6 @@
     } catch (error) {
       console.error(error);
       dialogs.alert("Failed to process image.", "Error");
-    }
-  }
-
-  async function handleAssetUpload(e: Event) {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const uri = event.target?.result as string;
-        if (!character) return;
-        if (!character.data.assets) {
-          character.data.assets = [];
-        }
-
-        const ext = file.name.split(".").pop() || "png";
-        const name = file.name
-          .split(".")[0]
-          .replace(/[^a-zA-Z0-9_]/g, "_")
-          .toLowerCase();
-
-        character.data.assets = [
-          ...character.data.assets,
-          {
-            id: crypto.randomUUID(),
-            name,
-            type: "image",
-            uri,
-            ext,
-          },
-        ];
-      };
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error(error);
-      dialogs.alert("Failed to process asset upload.", "Error");
-    } finally {
-      if (fileInputAsset) fileInputAsset.value = "";
-    }
-  }
-
-  function removeAsset(id: string) {
-    if (character && character.data.assets) {
-      character.data.assets = character.data.assets.filter((a) => a.id !== id);
     }
   }
 
@@ -513,6 +479,20 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       ext: asset.ext,
     }));
 
+    const characterBookData = {
+      name: character.data.characterBook?.name || "",
+      description: character.data.characterBook?.description || "",
+      entries: (character.data.characterBook?.entries || []).map((entry) => ({
+        keys: entry.keys,
+        secondary_keys: entry.secondary_keys || [],
+        content: entry.content,
+        enabled: entry.enabled,
+        priority: entry.priority ?? 10,
+        comment: entry.comment || "",
+        constant: entry.constant ?? false,
+      })),
+    };
+
     const v3Data = {
       spec: "chara_card_v3",
       spec_version: "3.0",
@@ -543,10 +523,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         tags: [],
         creator: "",
         character_version: "1.0",
-        character_book: {
-          entries: [],
-          extensions: {},
-        },
+        character_book: characterBookData,
         assets: specAssetsList,
         extensions: {
           char_creator: {
@@ -591,15 +568,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           tags: [],
           creator: "",
           character_version: "1.0",
-          character_book: {
-            entries: [],
-            extensions: {},
-          },
+          character_book: characterBookData,
           extensions: {
             char_creator: {
               mainPrompt: character.data.mainPrompt,
             },
-
             assets: (character.data.assets || []).reduce(
               (acc, asset) => {
                 acc[asset.name || asset.id] = asset.uri;
@@ -680,31 +653,6 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       copied = true;
       setTimeout(() => (copied = false), 2000);
     });
-  }
-
-  function addFirstMessage() {
-    if (character)
-      character.data.firstMessages = [...character.data.firstMessages, ""];
-  }
-  function removeFirstMessage(index: number) {
-    if (character) {
-      character.data.firstMessages = character.data.firstMessages.filter(
-        (_, i) => i !== index,
-      );
-    }
-  }
-  function addExampleMessage() {
-    if (character)
-      character.data.exampleMessages = [
-        ...character.data.exampleMessages,
-        { id: crypto.randomUUID(), user: "", character: "" },
-      ];
-  }
-  function removeExampleMessage(id: string) {
-    if (character)
-      character.data.exampleMessages = character.data.exampleMessages.filter(
-        (m) => m.id !== id,
-      );
   }
 </script>
 
@@ -877,82 +825,18 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         </div>
 
         <!-- Media Assets Management Grid -->
-        <div class="bg-card border rounded-2xl p-4 sm:p-6 shadow-sm space-y-5">
-          <div>
-            <h3 class="text-2xl font-black">Multimedia Assets</h3>
-            <p class="text-xs text-muted-foreground">
-              Embed custom reference graphics, landscapes, or expressions
-              directly within the character file.
-            </p>
-          </div>
+        <MediaAssets
+          bind:assets={character.data.assets}
+          {generatingAll}
+          {activeGeneratingField}
+        />
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {#each character.data.assets || [] as asset, i (asset.id)}
-              <div
-                class="relative group border rounded-xl p-3 bg-secondary/20 flex flex-col justify-between space-y-3 shadow-sm hover:border-muted-foreground/30 transition-all"
-              >
-                <button
-                  onclick={() => removeAsset(asset.id)}
-                  disabled={generatingAll || activeGeneratingField !== null}
-                  class="absolute top-2 right-2 p-1.5 bg-destructive/15 text-destructive rounded-md transition-all hover:bg-destructive/25 opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50"
-                  aria-label="Remove Asset"
-                >
-                  <Trash2 class="w-4 h-4" />
-                </button>
-
-                <div
-                  class="w-full h-32 rounded-lg overflow-hidden bg-background border flex items-center justify-center shadow-inner"
-                >
-                  {#if asset.type === "image" || asset.type === "avatar"}
-                    <img
-                      src={asset.uri}
-                      alt={asset.name}
-                      class="w-full h-full object-cover"
-                    />
-                  {:else}
-                    <span class="text-3xl">🔊</span>
-                  {/if}
-                </div>
-
-                <div class="space-y-1">
-                  <label
-                    for="asset-name-{i}"
-                    class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
-                    >Asset Name</label
-                  >
-                  <input
-                    id="asset-name-{i}"
-                    type="text"
-                    bind:value={asset.name}
-                    disabled={generatingAll || activeGeneratingField !== null}
-                    class="w-full bg-background text-xs font-mono border rounded-md px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-                    placeholder="e.g. workshop_scene"
-                  />
-                </div>
-              </div>
-            {/each}
-
-            <!-- Upload trigger cell -->
-            <button
-              onclick={() => fileInputAsset?.click()}
-              disabled={generatingAll || activeGeneratingField !== null}
-              class="border-2 border-dashed border-muted-foreground/20 rounded-xl p-6 flex flex-col items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer min-h-48 group disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ImagePlus
-                class="w-8 h-8 mb-2 text-muted-foreground/60 group-hover:text-primary transition-colors"
-              />
-              <span class="text-xs font-bold">Add Image Asset</span>
-            </button>
-          </div>
-
-          <input
-            type="file"
-            accept="image/*"
-            class="hidden"
-            bind:this={fileInputAsset}
-            onchange={handleAssetUpload}
-          />
-        </div>
+        <!-- Lorebook / Character Book Panel -->
+        <Lorebook
+          bind:characterBook={character.data.characterBook}
+          {generatingAll}
+          {activeGeneratingField}
+        />
 
         <!-- Main Fields Section -->
         <div class="space-y-8">
@@ -999,339 +883,35 @@ ${JSON.stringify(schemaObj, null, 2)}`;
           </div>
 
           <!-- FIRST MESSAGES -->
-          <div class="space-y-4 pt-4">
-            <div
-              class="flex justify-between items-center border-b border-border pb-2"
-            >
-              <div>
-                <h3 class="text-2xl font-bold">First Messages</h3>
-                <p class="text-sm text-muted-foreground">
-                  The initial greeting. Add alternatives for different starting
-                  scenarios.
-                </p>
-              </div>
-              <button
-                onclick={addFirstMessage}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus class="w-4 h-4" /> Add
-              </button>
-            </div>
-
-            <div class="space-y-6">
-              {#each character.data.firstMessages as msg, i}
-                <div
-                  class="bg-card border rounded-lg p-4 shadow-sm relative group"
-                >
-                  <div class="flex justify-between items-center mb-3">
-                    <label
-                      for="first-msg-{i}"
-                      class="font-semibold text-sm uppercase tracking-wide text-muted-foreground"
-                      >{i === 0 ? "Main Greeting" : `Alternative ${i}`}</label
-                    >
-                    <div class="flex items-center gap-2">
-                      {#if activeGeneratingField === `First Message ${i}`}
-                        <button
-                          onclick={cancelGeneration}
-                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1.5 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer"
-                          ><X class="w-3.5 h-3.5" /> Cancel</button
-                        >
-                      {:else}
-                        <button
-                          onclick={() =>
-                            enhanceField(
-                              `First Message ${i}`,
-                              msg,
-                              (v) => (character!.data.firstMessages[i] = v),
-                            )}
-                          disabled={generatingAll ||
-                            (activeGeneratingField !== null &&
-                              activeGeneratingField !== `First Message ${i}`)}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
-                        >
-                      {/if}
-                      {#if i > 0}
-                        <button
-                          onclick={() => removeFirstMessage(i)}
-                          disabled={generatingAll ||
-                            activeGeneratingField !== null}
-                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          ><Trash2 class="w-4 h-4" /></button
-                        >
-                      {/if}
-                    </div>
-                  </div>
-                  <textarea
-                    id="first-msg-{i}"
-                    use:autoresize={character.data.firstMessages[i]}
-                    bind:value={character.data.firstMessages[i]}
-                    class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={generatingAll ||
-                      activeGeneratingField === `First Message ${i}`}
-                  ></textarea>
-                </div>
-              {/each}
-            </div>
-          </div>
+          <FirstGreetings
+            bind:firstMessages={character.data.firstMessages}
+            {generatingAll}
+            {activeGeneratingField}
+            onenhance={enhanceField}
+            oncancel={cancelGeneration}
+          />
 
           <!-- EXAMPLE MESSAGES -->
-          <div class="space-y-4 pt-4">
-            <div
-              class="flex justify-between items-center border-b border-border pb-2"
-            >
-              <div>
-                <h3 class="text-2xl font-bold">Example Messages</h3>
-                <p class="text-sm text-muted-foreground">
-                  Dialogues or monologues defining how the character speaks.
-                </p>
-              </div>
-              <button
-                onclick={addExampleMessage}
-                disabled={generatingAll || activeGeneratingField !== null}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus class="w-4 h-4" /> Add
-              </button>
-            </div>
-
-            <div class="space-y-4">
-              {#if character.data.exampleMessages.length === 0}
-                <div
-                  class="text-center py-8 text-sm text-muted-foreground border rounded-lg border-dashed"
-                >
-                  No examples added. Click the button above to add one.
-                </div>
-              {/if}
-
-              {#each character.data.exampleMessages as ex, i (ex.id)}
-                <div
-                  class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4 group"
-                >
-                  <button
-                    onclick={() => removeExampleMessage(ex.id)}
-                    disabled={generatingAll || activeGeneratingField !== null}
-                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    ><Trash2 class="w-4 h-4" /></button
-                  >
-                  <div class="pr-8">
-                    <label
-                      for="ex-user-{i}"
-                      class="text-sm font-semibold mb-1 block text-muted-foreground"
-                      >User Prompt (Optional)</label
-                    >
-                    <textarea
-                      id="ex-user-{i}"
-                      use:autoresize={ex.user}
-                      bind:value={ex.user}
-                      class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15 disabled:opacity-50 disabled:cursor-not-allowed"
-                      placeholder="e.g. *I walk into the tavern and wave*"
-                      disabled={generatingAll ||
-                        activeGeneratingField === `Example Message ${i}`}
-                    ></textarea>
-                  </div>
-                  <div>
-                    <div class="flex justify-between items-center mb-1">
-                      <label
-                        for="ex-char-{i}"
-                        class="text-sm font-semibold text-foreground"
-                        >Character Response</label
-                      >
-                      {#if activeGeneratingField === `Example Message ${i}`}
-                        <button
-                          onclick={cancelGeneration}
-                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer"
-                          ><X class="w-3.5 h-3.5" /> Cancel</button
-                        >
-                      {:else}
-                        <button
-                          onclick={() =>
-                            enhanceField(
-                              `Example Message ${i}`,
-                              ex.character,
-                              (v) => (ex.character = v),
-                            )}
-                          disabled={generatingAll ||
-                            (activeGeneratingField !== null &&
-                              activeGeneratingField !== `Example Message ${i}`)}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
-                        >
-                      {/if}
-                    </div>
-                    <textarea
-                      id="ex-char-{i}"
-                      use:autoresize={ex.character}
-                      bind:value={ex.character}
-                      class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
-                      placeholder="e.g. *glances up from his ale* 'What do you want?'"
-                      disabled={generatingAll ||
-                        activeGeneratingField === `Example Message ${i}`}
-                    ></textarea>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
+          <ExampleDialogues
+            bind:exampleMessages={character.data.exampleMessages}
+            {generatingAll}
+            {activeGeneratingField}
+            onenhance={enhanceField}
+            oncancel={cancelGeneration}
+          />
         </div>
 
         <!-- Subfields Section -->
-        <div class="space-y-6 pt-10 border-t border-border">
-          <h3
-            class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4"
-          >
-            Optional Subfields
-          </h3>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <label for="sub-personality" class="font-semibold text-lg"
-                >Personality</label
-              >
-              {#if activeGeneratingField === "Personality"}
-                <button
-                  onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
-                  ><X class="w-4 h-4" /> Cancel</button
-                >
-              {:else}
-                <button
-                  onclick={() =>
-                    enhanceField(
-                      "Personality",
-                      character!.data.personality,
-                      (v) => (character!.data.personality = v),
-                    )}
-                  disabled={generatingAll ||
-                    (activeGeneratingField !== null &&
-                      activeGeneratingField !== "Personality")}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  ><Sparkles class="w-4 h-4" /> Enhance</button
-                >
-              {/if}
-            </div>
-            <textarea
-              id="sub-personality"
-              use:autoresize={character.data.personality}
-              bind:value={character.data.personality}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={generatingAll ||
-                activeGeneratingField === "Personality"}
-            ></textarea>
-          </div>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <label for="sub-scenario" class="font-semibold text-lg"
-                >Scenario</label
-              >
-              {#if activeGeneratingField === "Scenario"}
-                <button
-                  onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
-                  ><X class="w-4 h-4" /> Cancel</button
-                >
-              {:else}
-                <button
-                  onclick={() =>
-                    enhanceField(
-                      "Scenario",
-                      character!.data.scenario,
-                      (v) => (character!.data.scenario = v),
-                    )}
-                  disabled={generatingAll ||
-                    (activeGeneratingField !== null &&
-                      activeGeneratingField !== "Scenario")}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  ><Sparkles class="w-4 h-4" /> Enhance</button
-                >
-              {/if}
-            </div>
-            <textarea
-              id="sub-scenario"
-              use:autoresize={character.data.scenario}
-              bind:value={character.data.scenario}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={generatingAll || activeGeneratingField === "Scenario"}
-            ></textarea>
-          </div>
-
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <label for="sub-backstory" class="font-semibold text-lg"
-                >Backstory</label
-              >
-              {#if activeGeneratingField === "Backstory"}
-                <button
-                  onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
-                  ><X class="w-4 h-4" /> Cancel</button
-                >
-              {:else}
-                <button
-                  onclick={() =>
-                    enhanceField(
-                      "Backstory",
-                      character!.data.backstory,
-                      (v) => (character!.data.backstory = v),
-                    )}
-                  disabled={generatingAll ||
-                    (activeGeneratingField !== null &&
-                      activeGeneratingField !== "Backstory")}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  ><Sparkles class="w-4 h-4" /> Enhance</button
-                >
-              {/if}
-            </div>
-            <textarea
-              id="sub-backstory"
-              use:autoresize={character.data.backstory}
-              bind:value={character.data.backstory}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={generatingAll || activeGeneratingField === "Backstory"}
-            ></textarea>
-          </div>
-
-          <!-- Other/Related Characters Subfield -->
-          <div class="space-y-3">
-            <div class="flex justify-between items-center">
-              <label for="sub-relatedCharacters" class="font-semibold text-lg"
-                >Related Characters</label
-              >
-              {#if activeGeneratingField === "Related Characters"}
-                <button
-                  onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
-                  ><X class="w-4 h-4" /> Cancel</button
-                >
-              {:else}
-                <button
-                  onclick={() =>
-                    enhanceField(
-                      "Related Characters",
-                      character!.data.relatedCharacters,
-                      (v) => (character!.data.relatedCharacters = v),
-                    )}
-                  disabled={generatingAll ||
-                    (activeGeneratingField !== null &&
-                      activeGeneratingField !== "Related Characters")}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  ><Sparkles class="w-4 h-4" /> Enhance</button
-                >
-              {/if}
-            </div>
-            <textarea
-              id="sub-relatedCharacters"
-              use:autoresize={character.data.relatedCharacters}
-              bind:value={character.data.relatedCharacters}
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
-              placeholder="Describe relations to other characters..."
-              disabled={generatingAll ||
-                activeGeneratingField === "Related Characters"}
-            ></textarea>
-          </div>
-        </div>
+        <Subfields
+          bind:personality={character.data.personality}
+          bind:scenario={character.data.scenario}
+          bind:backstory={character.data.backstory}
+          bind:relatedCharacters={character.data.relatedCharacters}
+          {generatingAll}
+          {activeGeneratingField}
+          onenhance={enhanceField}
+          oncancel={cancelGeneration}
+        />
       </div>
     </div>
   {/if}

@@ -5,6 +5,7 @@
     type Character,
     type ExampleMessage,
     type CharacterAsset,
+    type CharacterBook,
   } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
@@ -39,6 +40,11 @@
         exampleMessages: [],
         image: null,
         assets: [],
+        characterBook: {
+          name: "",
+          description: "",
+          entries: [],
+        },
       },
     };
     await db.characters.add(newChar);
@@ -256,6 +262,39 @@
         }
       }
 
+      let characterBook: CharacterBook = {
+        name: "",
+        description: "",
+        entries: [],
+      };
+
+      if (data.character_book && typeof data.character_book === "object") {
+        const cb = data.character_book;
+        characterBook = {
+          name: cb.name || "",
+          description: cb.description || "",
+          entries: Array.isArray(cb.entries)
+            ? cb.entries.map((entry: any) => ({
+                id: crypto.randomUUID(),
+                keys: Array.isArray(entry.keys)
+                  ? entry.keys.map(String)
+                  : typeof entry.keys === "string"
+                    ? [entry.keys]
+                    : [],
+                secondary_keys: Array.isArray(entry.secondary_keys)
+                  ? entry.secondary_keys.map(String)
+                  : [],
+                content: entry.content || "",
+                enabled: entry.enabled !== false,
+                priority:
+                  typeof entry.priority === "number" ? entry.priority : 10,
+                comment: entry.comment || "",
+                constant: entry.constant === true,
+              }))
+            : [],
+        };
+      }
+
       const newChar: Character = {
         id: crypto.randomUUID(),
         name,
@@ -272,13 +311,14 @@
           exampleMessages,
           image: base64Image || null,
           assets,
+          characterBook,
         },
       };
 
       await db.characters.add(newChar);
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
       await dialogs.alert(
-        `Character "${name}" imported successfully with ${assets.length} extra media assets!`,
+        `Character "${name}" imported successfully with ${assets.length} extra media assets and ${characterBook.entries.length} Lorebook entries!`,
         "Import Successful",
       );
     } catch (error: any) {

@@ -291,6 +291,15 @@
               image: char.data?.image || null,
               relatedCharacters: char.data?.relatedCharacters || "",
               assets: Array.isArray(char.data?.assets) ? char.data.assets : [],
+              characterBook: char.data?.characterBook
+                ? {
+                    name: char.data.characterBook.name || "",
+                    description: char.data.characterBook.description || "",
+                    entries: Array.isArray(char.data.characterBook.entries)
+                      ? char.data.characterBook.entries
+                      : [],
+                  }
+                : { name: "", description: "", entries: [] },
             },
           };
 
