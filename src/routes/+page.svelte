@@ -4,7 +4,6 @@
     db,
     type Character,
     type ExampleMessage,
-    type CharacterAsset,
     type CharacterBook,
   } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
@@ -21,21 +20,23 @@
   import { fade } from "svelte/transition";
   import { extractCharacterCardMetadata, generateThumbnail } from "$lib/png";
 
+  // Reactive state for UI data and loading indicators
   let characters = $state<Character[]>([]);
   let searchQuery = $state("");
   let loading = $state(true);
+  let isImporting = $state(false);
   let fileInputImport = $state<HTMLInputElement>();
 
-  // Real-time local search derived state
+  // Real-time local search derived state for filtering dashboard cards
   let filteredCharacters = $derived(
     characters.filter((c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()),
     ),
   );
 
+  // Fetches initial character list on mount, omitting heavy base64 to ensure fast load times
   onMount(async () => {
     try {
-      // Fast, lightweight query that omits heavy base64 assets
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
     } catch (err: any) {
       console.error("Failed to query characters:", err);
@@ -48,9 +49,7 @@
     }
   });
 
-  /**
-   * Initializes and commits a default character template to IndexedDB.
-   */
+  // Initializes and commits a blank default character template to IndexedDB, then navigates to editor
   async function createNew() {
     const id = crypto.randomUUID();
     const newChar: Character = {
@@ -68,11 +67,7 @@
         firstMessages: [""],
         exampleMessages: [],
         thumbnail: null,
-        characterBook: {
-          name: "",
-          description: "",
-          entries: [],
-        },
+        characterBook: { name: "", description: "", entries: [] },
         worldInfo: "",
       },
     };
@@ -89,10 +84,7 @@
     }
   }
 
-  /**
-   * Wipes a character and all its decoupled binary/asset dependencies.
-   * @param id Character UUID.
-   */
+  // Wipes a character and all its decoupled binary/asset dependencies to free up local storage quota
   async function deleteChar(id: string) {
     const confirmed = await dialogs.confirm(
       "Are you sure you want to delete this character? This cannot be undone.",
@@ -100,9 +92,19 @@
     if (!confirmed) return;
 
     try {
-      await db.characters.delete(id);
-      await db.characterImages.delete(id);
-      await db.characterAssets.where("characterId").equals(id).delete();
+      // Execute as a transaction to prevent orphaned assets if one table deletion fails
+      await db.transaction(
+        "rw",
+        db.characters,
+        db.characterImages,
+        db.characterAssets,
+        async () => {
+          await db.characters.delete(id);
+          await db.characterImages.delete(id);
+          await db.characterAssets.where("characterId").equals(id).delete();
+        },
+      );
+
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
     } catch (err: any) {
       console.error("Deletion failed:", err);
@@ -110,80 +112,82 @@
     }
   }
 
-  /**
-   * Parses legacy Tavern greeting text blocks into structured example messages.
-   * @param mesExample Text block payload.
-   */
+  // Parses legacy Tavern greeting text blocks into structured example message objects
   function parseExampleMessages(
     mesExample: string | undefined | null,
   ): ExampleMessage[] {
     if (!mesExample) return [];
     const examples: ExampleMessage[] = [];
-    const blocks = mesExample.split(/<START>/i);
-    for (const block of blocks) {
-      const trimmedBlock = block.trim();
-      if (!trimmedBlock) continue;
+    try {
+      const blocks = mesExample.split(/<START>/i);
+      for (const block of blocks) {
+        const trimmedBlock = block.trim();
+        if (!trimmedBlock) continue;
 
-      const lines = trimmedBlock.split("\n");
-      let userText = "";
-      let charText = "";
+        const lines = trimmedBlock.split("\n");
+        let userText = "";
+        let charText = "";
 
-      for (const line of lines) {
-        const lower = line.trim().toLowerCase();
-        if (lower.startsWith("{{user}}:")) {
-          userText = line.substring(line.indexOf(":") + 1).trim();
-        } else if (lower.startsWith("{{char}}:")) {
-          if (charText) charText += "\n";
-          charText += line.substring(line.indexOf(":") + 1).trim();
-        } else {
-          if (charText) {
-            charText += "\n" + line.trim();
-          } else if (userText) {
-            userText += "\n" + line.trim();
+        for (const line of lines) {
+          const lower = line.trim().toLowerCase();
+          if (lower.startsWith("{{user}}:")) {
+            userText = line.substring(line.indexOf(":") + 1).trim();
+          } else if (lower.startsWith("{{char}}:")) {
+            if (charText) charText += "\n";
+            charText += line.substring(line.indexOf(":") + 1).trim();
           } else {
-            charText = line.trim();
+            if (charText) {
+              charText += "\n" + line.trim();
+            } else if (userText) {
+              userText += "\n" + line.trim();
+            } else {
+              charText = line.trim();
+            }
           }
         }
-      }
 
-      if (charText || userText) {
-        examples.push({
-          id: crypto.randomUUID(),
-          user: userText,
-          character: charText,
-        });
+        if (charText || userText) {
+          examples.push({
+            id: crypto.randomUUID(),
+            user: userText,
+            character: charText,
+          });
+        }
       }
+    } catch (e) {
+      console.warn("Failed to parse some dialogue examples", e);
     }
     return examples;
   }
 
-  /**
-   * Cleans and splits composite description payloads on import.
-   */
+  // Cleans and splits composite description payloads on import to map legacy cards to our schema
   function extractSection(
     text: string,
     header: string,
   ): { content: string; cleanedText: string } {
-    const regex = new RegExp(
-      `(?:^|\\n)${header}\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Personality|Scenario|Backstory|Related Characters)\\s*:|$)`,
-      "i",
-    );
-    const match = text.match(regex);
-    if (match) {
-      const content = match[1].trim();
-      const cleanedText = text.replace(match[0], "").trim();
-      return { content, cleanedText };
+    try {
+      const regex = new RegExp(
+        `(?:^|\\n)${header}\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Personality|Scenario|Backstory|Related Characters)\\s*:|$)`,
+        "i",
+      );
+      const match = text.match(regex);
+      if (match) {
+        const content = match[1].trim();
+        const cleanedText = text.replace(match[0], "").trim();
+        return { content, cleanedText };
+      }
+    } catch (e) {
+      console.warn(`Failed to extract section ${header}`, e);
     }
     return { content: "", cleanedText: text };
   }
 
-  /**
-   * Imports a PNG character card, processes its metadata payload,
-   * auto-generates thumbnails, and splits binary data into separate tables.
-   */
+  // Parses uploaded PNG, extracts V2/V3 metadata, generates a thumbnail, and transacts it to DB
   async function handleImportCard(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
+
+    isImporting = true;
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -200,20 +204,14 @@
       try {
         parsed = JSON.parse(metadata);
       } catch (err) {
-        await dialogs.alert(
-          "Failed to parse card metadata. The file structure might be corrupted.",
-          "Invalid Data",
+        throw new Error(
+          "Failed to parse card metadata JSON. The file structure might be corrupted.",
         );
-        return;
       }
 
       const data = parsed.data || parsed;
       const name = data.name || "Imported Character";
-
-      let mainPrompt = "";
-      if (data.extensions?.char_creator?.mainPrompt) {
-        mainPrompt = data.extensions.char_creator.mainPrompt;
-      }
+      let mainPrompt = data.extensions?.char_creator?.mainPrompt || "";
 
       let fullDesc = data.description || "";
       let personality = (data.personality || "").trim();
@@ -246,18 +244,20 @@
       }
 
       const description = fullDesc.trim();
-      if (!mainPrompt) {
-        mainPrompt = description.substring(0, 150) || name;
-      }
+      if (!mainPrompt) mainPrompt = description.substring(0, 150) || name;
 
+      // Wrap FileReader in robust Promise with explicit rejections to prevent hanging UI
       const reader = new FileReader();
-      const base64Image = await new Promise<string>((resolve) => {
+      const base64Image = await new Promise<string>((resolve, reject) => {
         reader.onload = (event) => resolve(event.target?.result as string);
+        reader.onerror = () =>
+          reject(new Error("Browser failed to read the local file stream."));
+        reader.onabort = () => reject(new Error("File read was aborted."));
         reader.readAsDataURL(file);
       });
 
       const thumbnail = base64Image
-        ? await generateThumbnail(base64Image)
+        ? await generateThumbnail(base64Image).catch(() => null)
         : null;
 
       const firstMessages = [data.first_mes || ""];
@@ -266,8 +266,9 @@
       }
 
       const exampleMessages = parseExampleMessages(data.mes_example);
-
       let assets: any[] = [];
+
+      // Parse V3 Asset arrays
       if (Array.isArray(data.assets)) {
         assets = data.assets
           .map((asset: any) => ({
@@ -281,22 +282,11 @@
             ext: asset.ext || "png",
           }))
           .filter((asset: any) => asset.uri);
-      } else if (data.extensions?.assets) {
+      }
+      // Parse V2 Extensions fallback
+      else if (data.extensions?.assets) {
         const v2Assets = data.extensions.assets;
-        if (Array.isArray(v2Assets)) {
-          assets = v2Assets
-            .map((asset: any) => ({
-              id: crypto.randomUUID(),
-              name: asset.name || "unnamed_asset",
-              type:
-                asset.type === "avatar" || asset.type === "voice"
-                  ? asset.type
-                  : "image",
-              uri: asset.uri || "",
-              ext: asset.ext || "png",
-            }))
-            .filter((asset: any) => asset.uri);
-        } else if (typeof v2Assets === "object") {
+        if (typeof v2Assets === "object") {
           Object.entries(v2Assets).forEach(([key, val]) => {
             if (typeof val === "string" && val.startsWith("data:")) {
               let type: "image" | "avatar" | "voice" = "image";
@@ -354,12 +344,12 @@
         };
       }
 
-      let worldInfo = "";
-      if (typeof data.extensions?.world_info === "string") {
-        worldInfo = data.extensions.world_info;
-      } else if (data.extensions?.world_info) {
-        worldInfo = JSON.stringify(data.extensions.world_info);
-      }
+      let worldInfo =
+        typeof data.extensions?.world_info === "string"
+          ? data.extensions.world_info
+          : data.extensions?.world_info
+            ? JSON.stringify(data.extensions.world_info)
+            : "";
 
       const id = crypto.randomUUID();
       const newChar: Character = {
@@ -382,15 +372,23 @@
         },
       };
 
-      await db.characters.add(newChar);
-      if (base64Image) {
-        await db.characterImages.put({ id, image: base64Image });
-      }
-      if (assets.length > 0) {
-        await db.characterAssets.bulkPut(
-          assets.map((a) => ({ ...a, characterId: id })),
-        );
-      }
+      // Transaction ensures we don't save half a character if asset size breaks IndexedDB quota
+      await db.transaction(
+        "rw",
+        db.characters,
+        db.characterImages,
+        db.characterAssets,
+        async () => {
+          await db.characters.add(newChar);
+          if (base64Image)
+            await db.characterImages.put({ id, image: base64Image });
+          if (assets.length > 0) {
+            await db.characterAssets.bulkPut(
+              assets.map((a) => ({ ...a, characterId: id })),
+            );
+          }
+        },
+      );
 
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
       await dialogs.alert(
@@ -400,10 +398,11 @@
     } catch (error: any) {
       console.error("Import failure:", error);
       dialogs.alert(
-        "Failed to import character card: " + error.message,
+        error.message || "Failed to import character card.",
         "Import Failed",
       );
     } finally {
+      isImporting = false;
       if (fileInputImport) fileInputImport.value = "";
     }
   }
@@ -413,6 +412,7 @@
   <title>Char Creator - Dashboard</title>
 </svelte:head>
 
+<!-- Header Actions -->
 <div
   class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4 animate-fade-in"
 >
@@ -422,9 +422,14 @@
   >
     <button
       onclick={() => fileInputImport?.click()}
-      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer shadow-sm"
+      disabled={isImporting}
+      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer shadow-sm disabled:opacity-50"
     >
-      <FileUp class="w-4 h-4" /> Import PNG Card
+      {#if isImporting}
+        <Loader2 class="w-4 h-4 animate-spin" /> Importing...
+      {:else}
+        <FileUp class="w-4 h-4" /> Import PNG Card
+      {/if}
     </button>
     <button
       onclick={createNew}
@@ -440,11 +445,12 @@
   <div
     class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
   >
-    <Search class="w-5 h-5 text-muted-foreground mr-3" />
+    <Search class="w-5 h-5 text-muted-foreground mr-3" aria-hidden="true" />
     <input
       type="text"
       bind:value={searchQuery}
       placeholder="Search characters by name..."
+      aria-label="Search characters"
       class="w-full bg-transparent focus:outline-none text-sm font-medium text-foreground"
     />
     {#if searchQuery}
@@ -467,93 +473,99 @@
   onchange={handleImportCard}
 />
 
-{#if loading}
-  <div
-    in:fade={{ duration: 200 }}
-    class="flex flex-col items-center justify-center py-32 text-muted-foreground"
-  >
-    <Loader2 class="w-8 h-8 animate-spin mb-4" />
-    <p>Loading characters...</p>
-  </div>
-{:else if characters.length === 0}
-  <div
-    in:fade={{ duration: 200 }}
-    class="text-center py-20 border border-dashed rounded-lg bg-card px-4 shadow-sm"
-  >
-    <h2 class="text-xl font-semibold mb-2">No characters found</h2>
-    <p class="text-muted-foreground mb-6">
-      Start building your first roleplay personality.
-    </p>
+<!-- Main Character Grid Viewport with aria-live for a11y screenreader announcements -->
+<div aria-live="polite">
+  {#if loading}
     <div
-      class="flex flex-col sm:flex-row items-center justify-center gap-2 max-w-sm mx-auto"
+      in:fade={{ duration: 200 }}
+      class="flex flex-col items-center justify-center py-32 text-muted-foreground"
     >
-      <button
-        onclick={createNew}
-        class="w-full sm:w-auto bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer shadow-sm"
-        >Get Started</button
-      >
-      <button
-        onclick={() => fileInputImport?.click()}
-        class="w-full sm:w-auto bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium cursor-pointer shadow-sm"
-        >Import Card</button
-      >
+      <Loader2 class="w-8 h-8 animate-spin mb-4" aria-hidden="true" />
+      <p>Loading characters...</p>
     </div>
-  </div>
-{:else if filteredCharacters.length === 0}
-  <div
-    in:fade={{ duration: 200 }}
-    class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
-  >
-    <p class="text-muted-foreground">No characters match your search query.</p>
-  </div>
-{:else}
-  <div
-    in:fade={{ duration: 200 }}
-    class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-  >
-    {#each filteredCharacters as char (char.id)}
+  {:else if characters.length === 0}
+    <div
+      in:fade={{ duration: 200 }}
+      class="text-center py-20 border border-dashed rounded-lg bg-card px-4 shadow-sm"
+    >
+      <h2 class="text-xl font-semibold mb-2">No characters found</h2>
+      <p class="text-muted-foreground mb-6">
+        Start building your first roleplay personality.
+      </p>
       <div
-        class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-all"
+        class="flex flex-col sm:flex-row items-center justify-center gap-2 max-w-sm mx-auto"
       >
-        <div>
-          <div class="flex items-center gap-4 mb-4">
-            <div
-              class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center"
-            >
-              {#if char.data.thumbnail}
-                <img
-                  src={char.data.thumbnail}
-                  alt={char.name}
-                  class="w-full h-full object-cover"
-                />
-              {:else}
-                <span class="text-xl">🎭</span>
-              {/if}
-            </div>
-            <h2 class="text-xl font-semibold line-clamp-1">
-              {char.name || "Unnamed Character"}
-            </h2>
-          </div>
-          <p class="text-sm text-muted-foreground mb-4 line-clamp-3">
-            {char.data.mainPrompt || "No core concept provided."}
-          </p>
-        </div>
-        <div class="flex items-center gap-2 mt-4 pt-4 border-t border-border">
-          <a
-            href="/editor/{char.id}"
-            class="flex-1 flex items-center justify-center gap-2 bg-secondary text-secondary-foreground py-2 rounded-md hover:bg-secondary/80 transition-colors border shadow-sm font-medium"
-          >
-            <Edit class="w-4 h-4" /> Edit
-          </a>
-          <button
-            onclick={() => deleteChar(char.id)}
-            class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors cursor-pointer"
-            aria-label="Delete"
-          >
-            <Trash2 class="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onclick={createNew}
+          class="w-full sm:w-auto bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer shadow-sm"
+          >Get Started</button
+        >
+        <button
+          onclick={() => fileInputImport?.click()}
+          class="w-full sm:w-auto bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium cursor-pointer shadow-sm"
+          >Import Card</button
+        >
       </div>
-    {/each}
-  </div>
-{/if}
+    </div>
+  {:else if filteredCharacters.length === 0}
+    <div
+      in:fade={{ duration: 200 }}
+      class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
+    >
+      <p class="text-muted-foreground">
+        No characters match your search query.
+      </p>
+    </div>
+  {:else}
+    <div
+      in:fade={{ duration: 200 }}
+      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    >
+      {#each filteredCharacters as char (char.id)}
+        <div
+          class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-all"
+        >
+          <div>
+            <div class="flex items-center gap-4 mb-4">
+              <div
+                class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center"
+              >
+                {#if char.data.thumbnail}
+                  <img
+                    src={char.data.thumbnail}
+                    alt={char.name}
+                    class="w-full h-full object-cover"
+                  />
+                {:else}
+                  <span class="text-xl" aria-hidden="true">🎭</span>
+                {/if}
+              </div>
+              <h2 class="text-xl font-semibold line-clamp-1">
+                {char.name || "Unnamed Character"}
+              </h2>
+            </div>
+            <p class="text-sm text-muted-foreground mb-4 line-clamp-3">
+              {char.data.mainPrompt || "No core concept provided."}
+            </p>
+          </div>
+          <div class="flex items-center gap-2 mt-4 pt-4 border-t border-border">
+            <a
+              href="/editor/{char.id}"
+              aria-label="Edit {char.name}"
+              class="flex-1 flex items-center justify-center gap-2 bg-secondary text-secondary-foreground py-2 rounded-md hover:bg-secondary/80 transition-colors border shadow-sm font-medium"
+            >
+              <Edit class="w-4 h-4" aria-hidden="true" /> Edit
+            </a>
+            <button
+              onclick={() => deleteChar(char.id)}
+              aria-label="Delete {char.name}"
+              class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors cursor-pointer"
+            >
+              <Trash2 class="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+</div>

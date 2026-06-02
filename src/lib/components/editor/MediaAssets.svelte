@@ -3,6 +3,7 @@
   import { dialogs } from "$lib/dialogs.svelte";
   import { Trash2, ImagePlus } from "@lucide/svelte";
 
+  // Binds external media arrays to the editor's parent state
   let {
     assets = $bindable([]),
     characterId,
@@ -15,14 +16,17 @@
     activeGeneratingField: string | null;
   } = $props();
 
+  // Reference to the hidden file input element for triggering uploads
   let fileInputAsset = $state<HTMLInputElement>();
 
+  // Reads the selected local file, converts it to a base64 string, and injects it into the DB state
   async function handleAssetUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
     try {
       const reader = new FileReader();
+
       reader.onload = (event) => {
         const uri = event.target?.result as string;
         const ext = file.name.split(".").pop() || "png";
@@ -43,20 +47,31 @@
           },
         ];
       };
+
+      // Ensure broken files or blocked I/O don't hang the application silently
+      reader.onerror = () => {
+        throw new Error("Local file read interrupted or corrupted.");
+      };
+
       reader.readAsDataURL(file);
-    } catch (error) {
-      console.error(error);
-      dialogs.alert("Failed to process asset upload.", "Error");
+    } catch (error: any) {
+      console.error("Asset upload error:", error);
+      dialogs.alert(
+        error.message || "Failed to process asset upload.",
+        "Error",
+      );
     } finally {
       if (fileInputAsset) fileInputAsset.value = "";
     }
   }
 
+  // Purges a specific asset from the reactive array based on ID
   function removeAsset(id: string) {
     assets = assets.filter((a) => a.id !== id);
   }
 </script>
 
+<!-- Multimedia Dashboard Container -->
 <div class="bg-card border rounded-2xl p-4 sm:p-6 shadow-sm space-y-5">
   <div>
     <h3 class="text-2xl font-black">Multimedia Assets</h3>
@@ -66,6 +81,7 @@
     </p>
   </div>
 
+  <!-- Responsive Asset Grid -->
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
     {#each assets as asset, i (asset.id)}
       <div
@@ -80,6 +96,7 @@
           <Trash2 class="w-4 h-4" />
         </button>
 
+        <!-- Preview Viewport -->
         <div
           class="w-full h-32 rounded-lg overflow-hidden bg-background border flex items-center justify-center shadow-inner"
         >
@@ -94,6 +111,7 @@
           {/if}
         </div>
 
+        <!-- Asset Naming Metadata -->
         <div class="space-y-1">
           <label
             for="asset-name-{i}"
@@ -117,6 +135,7 @@
       onclick={() => fileInputAsset?.click()}
       disabled={generatingAll || activeGeneratingField !== null}
       class="border-2 border-dashed border-muted-foreground/20 rounded-xl p-6 flex flex-col items-center justify-center text-muted-foreground hover:text-foreground hover:border-primary/50 transition-all cursor-pointer min-h-48 group disabled:opacity-50 disabled:cursor-not-allowed"
+      aria-label="Upload New Image Asset"
     >
       <ImagePlus
         class="w-8 h-8 mb-2 text-muted-foreground/60 group-hover:text-primary transition-colors"
