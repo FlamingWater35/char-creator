@@ -2,7 +2,7 @@ import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 
 export const POST = async ({ request, url }: RequestEvent) => {
-  const { prompt, model, apiKey, system, temperature, frequencyPenalty, presencePenalty } = await request.json();
+  const { prompt, model, apiKey, system, temperature, frequencyPenalty, presencePenalty, topP, maxTokens } = await request.json();
 
   if (!apiKey) {
     return json({ error: 'API Key is missing.' }, { status: 401 });
@@ -29,7 +29,9 @@ export const POST = async ({ request, url }: RequestEvent) => {
       messages: messages as any,
       temperature: temperature ?? 0.8,
       frequency_penalty: frequencyPenalty ?? 0,
-      presence_penalty: presencePenalty ?? 0
+      presence_penalty: presencePenalty ?? 0,
+      top_p: topP ?? 1.0,
+      max_tokens: maxTokens ?? 8192
     }, { signal: request.signal });
 
     return json({ result: completion.choices[0].message.content });

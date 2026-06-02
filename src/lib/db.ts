@@ -20,6 +20,7 @@ export interface Character {
     firstMessages: string[];
     exampleMessages: ExampleMessage[];
     image?: string | null;
+    relatedCharacters: string;
   };
 }
 
@@ -71,6 +72,17 @@ export class CharDB extends Dexie {
       return tx.table('characters').toCollection().modify(char => {
         if (char.data.image === undefined) {
           char.data.image = null;
+        }
+      });
+    });
+
+    // Version 4: Adds support for other related characters
+    this.version(4).stores({
+      characters: 'id, name, createdAt, updatedAt'
+    }).upgrade(tx => {
+      return tx.table('characters').toCollection().modify(char => {
+        if (char.data.relatedCharacters === undefined) {
+          char.data.relatedCharacters = '';
         }
       });
     });

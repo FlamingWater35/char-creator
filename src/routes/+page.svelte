@@ -3,7 +3,7 @@
   import { db, type Character } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
-  import { Plus, Trash2, Edit, Loader2, ImagePlus } from "lucide-svelte";
+  import { Plus, Trash2, Edit, Loader2 } from "lucide-svelte";
   import { fade } from "svelte/transition";
 
   let characters = $state<Character[]>([]);
@@ -27,6 +27,7 @@
         personality: "",
         scenario: "",
         backstory: "",
+        relatedCharacters: "",
         firstMessages: [""],
         exampleMessages: [],
         image: null,
@@ -57,7 +58,7 @@
   <h1 class="text-3xl font-bold tracking-tight">Your Characters</h1>
   <button
     onclick={createNew}
-    class="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full md:w-auto justify-center"
+    class="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full md:w-auto justify-center cursor-pointer"
   >
     <Plus class="w-4 h-4" />
     Create New Character
@@ -83,7 +84,7 @@
     </p>
     <button
       onclick={createNew}
-      class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium"
+      class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer"
       >Get Started</button
     >
   </div>
@@ -115,7 +116,6 @@
               {char.name || "Unnamed Character"}
             </h2>
           </div>
-
           <p class="text-sm text-muted-foreground mb-4 line-clamp-3">
             {char.data.mainPrompt || "No core concept provided."}
           </p>
@@ -129,7 +129,7 @@
           </a>
           <button
             onclick={() => deleteChar(char.id)}
-            class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors"
+            class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors cursor-pointer"
             aria-label="Delete"
           >
             <Trash2 class="w-4 h-4" />

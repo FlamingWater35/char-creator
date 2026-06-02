@@ -95,13 +95,12 @@
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
-    // Check compression threshold & type format requirement
     const needsCompression = file.size > 2 * 1024 * 1024;
     const needsConversion = file.type !== "image/png";
 
     if (needsCompression || needsConversion) {
       await dialogs.alert(
-        "Your image will be automatically compressed and converted to PNG to conform to file size bounds.",
+        "Your image will be automatically compressed and converted to PNG.",
         "Processing Image",
       );
     }
@@ -115,7 +114,6 @@
           let { width, height } = img;
           const MAX_SIZE = 1024;
 
-          // Downscale
           if (width > MAX_SIZE || height > MAX_SIZE) {
             const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
             width *= ratio;
@@ -174,6 +172,8 @@
           temperature: settings.temperature,
           frequencyPenalty: settings.frequencyPenalty,
           presencePenalty: settings.presencePenalty,
+          topP: settings.topP,
+          maxTokens: settings.maxTokens,
         }),
       });
 
@@ -230,25 +230,34 @@ Respond ONLY with the improved content. Do not include any meta-commentary, mark
 
     generatingAll = true;
 
-    const prompt = `Generate a full roleplay character profile based on this concept:
+    // Build JSON structure dynamically
+    const schemaObj: Record<string, string> = {};
+    if (settings.genName) schemaObj["name"] = "Character name";
+    if (settings.genDescription)
+      schemaObj["description"] = "General description and physical appearance";
+    if (settings.genPersonality)
+      schemaObj["personality"] = "Personality traits, likes, dislikes, quirks";
+    if (settings.genScenario)
+      schemaObj["scenario"] =
+        "The setting or context where a roleplay might start";
+    if (settings.genBackstory)
+      schemaObj["backstory"] = "Their history, origin, and background details";
+    if (settings.genFirstMessages)
+      schemaObj["firstMessages"] =
+        "Array of strings containing: [engage starting greeting, optional alternative scenario greetings]";
+    if (settings.genExampleMessages)
+      schemaObj["exampleMessages"] =
+        'Array of dialogue examples matching exactly: [{"user": "Optional user actions/text", "character": "Character response"}]';
+    if (settings.genRelatedCharacters)
+      schemaObj["relatedCharacters"] =
+        "Details about other related characters, including their names, relationships, and brief descriptions";
+
+    const prompt = `Generate a roleplay character profile based on this concept:
 "${character.data.mainPrompt}"
 
 Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY raw JSON, no markdown blocks.
 
-{
-  "name": "Character's name",
-  "description": "General description and physical appearance",
-  "personality": "Personality traits, likes, dislikes, quirks",
-  "scenario": "The setting or context where a roleplay might start",
-  "backstory": "Their history and background",
-  "firstMessages": [
-    "A highly engaging main starting message in-character",
-    "An alternative greeting for a slightly different scenario"
-  ],
-  "exampleMessages": [
-    { "user": "Optional: what the user says to prompt the response", "character": "The character's in-character response" }
-  ]
-}`;
+${JSON.stringify(schemaObj, null, 2)}`;
 
     const result = await callAI(prompt);
 
@@ -265,20 +274,30 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
         const parsed = JSON.parse(cleanJson);
 
-        character.name = parsed.name || character.name;
-        character.data.description = parsed.description || "";
-        character.data.personality = parsed.personality || "";
-        character.data.scenario = parsed.scenario || "";
-        character.data.backstory = parsed.backstory || "";
+        if (settings.genName && parsed.name) character.name = parsed.name;
+        if (settings.genDescription && parsed.description)
+          character.data.description = parsed.description;
+        if (settings.genPersonality && parsed.personality)
+          character.data.personality = parsed.personality;
+        if (settings.genScenario && parsed.scenario)
+          character.data.scenario = parsed.scenario;
+        if (settings.genBackstory && parsed.backstory)
+          character.data.backstory = parsed.backstory;
+        if (settings.genRelatedCharacters && parsed.relatedCharacters)
+          character.data.relatedCharacters = parsed.relatedCharacters;
 
         if (
+          settings.genFirstMessages &&
           Array.isArray(parsed.firstMessages) &&
           parsed.firstMessages.length > 0
         ) {
           character.data.firstMessages = parsed.firstMessages;
         }
 
-        if (Array.isArray(parsed.exampleMessages)) {
+        if (
+          settings.genExampleMessages &&
+          Array.isArray(parsed.exampleMessages)
+        ) {
           character.data.exampleMessages = parsed.exampleMessages.map(
             (e: any) => ({
               id: crypto.randomUUID(),
@@ -306,14 +325,25 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
       imgData = generateDefaultBlackPNG();
     }
 
+    // Embed subfields Backstory and Related Characters into main description for optimal card portability
+    let finalDesc = character.data.description.trim();
+    let appended: string[] = [];
+    if (character.data.backstory?.trim())
+      appended.push(`Backstory: ${character.data.backstory.trim()}`);
+    if (character.data.relatedCharacters?.trim())
+      appended.push(
+        `Related Characters: ${character.data.relatedCharacters.trim()}`,
+      );
+    if (appended.length > 0) {
+      finalDesc += "\n\n" + appended.join("\n\n");
+    }
+
     const v3Data = {
       spec: "chara_card_v3",
       spec_version: "3.0",
       data: {
         name: character.name,
-        description: [character.data.description, character.data.backstory]
-          .filter(Boolean)
-          .join("\n\n"),
+        description: finalDesc,
         personality: character.data.personality,
         scenario: character.data.scenario,
         first_mes: character.data.firstMessages[0] || "",
@@ -377,6 +407,9 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
       subfields.push(`Personality: ${c.personality.trim()}`);
     if (c.scenario?.trim()) subfields.push(`Scenario: ${c.scenario.trim()}`);
     if (c.backstory?.trim()) subfields.push(`Backstory: ${c.backstory.trim()}`);
+    if (c.relatedCharacters?.trim())
+      subfields.push(`Related Characters: ${c.relatedCharacters.trim()}`);
+
     if (subfields.length > 0) descPart += "\n\n" + subfields.join("\n");
     if (descPart) parts.push(descPart);
 
@@ -457,11 +490,12 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
         <ArrowLeft class="w-4 h-4" /> Back to Dashboard
       </a>
 
-      <!-- Header Section -->
+      <!-- Header Section with Avatar -->
       <div
         class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6"
       >
         <div class="flex items-center gap-4 flex-1">
+          <!-- Avatar Upload -->
           <button
             class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm"
             onclick={() => fileInput?.click()}
@@ -507,7 +541,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
           <div class="flex items-center gap-2">
             <button
               onclick={copyToClipboard}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm"
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm cursor-pointer"
             >
               {#if copied}
                 <Check class="w-4 h-4" /> Copied!
@@ -517,7 +551,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             </button>
             <button
               onclick={downloadCardPNG}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer"
             >
               <Download class="w-4 h-4" /> PNG Card
             </button>
@@ -567,7 +601,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
             {#if generatingAll}
               <button
                 onclick={cancelGeneration}
-                class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap"
+                class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Loader2 class="w-4 h-4 animate-spin" /> Cancel Generation
               </button>
@@ -575,7 +609,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               <button
                 onclick={generateAll}
                 disabled={!character.data.mainPrompt}
-                class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap"
+                class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer"
               >
                 <Sparkles class="w-4 h-4" /> Generate All Fields
               </button>
@@ -605,7 +639,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Description"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -616,7 +650,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.description,
                       (v) => (character!.data.description = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -643,7 +677,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               </div>
               <button
                 onclick={addFirstMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -664,7 +698,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       {#if activeGeneratingField === `First Message ${i}`}
                         <button
                           onclick={cancelGeneration}
-                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1.5 rounded-md text-xs font-medium shadow-sm transition-colors"
+                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1.5 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer"
                           ><X class="w-3.5 h-3.5" /> Cancel</button
                         >
                       {:else}
@@ -675,14 +709,14 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                               msg,
                               (v) => (character!.data.firstMessages[i] = v),
                             )}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors"
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer"
                           ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
                       {#if i > 0}
                         <button
                           onclick={() => removeFirstMessage(i)}
-                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
                           ><Trash2 class="w-4 h-4" /></button
                         >
                       {/if}
@@ -712,7 +746,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               </div>
               <button
                 onclick={addExampleMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -733,7 +767,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                 >
                   <button
                     onclick={() => removeExampleMessage(ex.id)}
-                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
                     ><Trash2 class="w-4 h-4" /></button
                   >
                   <div class="pr-8">
@@ -760,7 +794,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       {#if activeGeneratingField === `Example Message ${i}`}
                         <button
                           onclick={cancelGeneration}
-                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors"
+                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer"
                           ><X class="w-3.5 h-3.5" /> Cancel</button
                         >
                       {:else}
@@ -771,7 +805,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                               ex.character,
                               (v) => (ex.character = v),
                             )}
-                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors"
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer"
                           ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
@@ -806,7 +840,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Personality"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -817,7 +851,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.personality,
                       (v) => (character!.data.personality = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -838,7 +872,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Scenario"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -849,7 +883,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.scenario,
                       (v) => (character!.data.scenario = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -870,7 +904,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Backstory"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -881,7 +915,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.backstory,
                       (v) => (character!.data.backstory = v),
                     )}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -891,6 +925,40 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               use:autoresize={character.data.backstory}
               bind:value={character.data.backstory}
               class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+            ></textarea>
+          </div>
+
+          <!-- Other/Related Characters Subfield -->
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <label for="sub-relatedCharacters" class="font-semibold text-lg"
+                >Related Characters</label
+              >
+              {#if activeGeneratingField === "Related Characters"}
+                <button
+                  onclick={cancelGeneration}
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
+                  ><X class="w-4 h-4" /> Cancel</button
+                >
+              {:else}
+                <button
+                  onclick={() =>
+                    enhanceField(
+                      "Related Characters",
+                      character!.data.relatedCharacters,
+                      (v) => (character!.data.relatedCharacters = v),
+                    )}
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer"
+                  ><Sparkles class="w-4 h-4" /> Enhance</button
+                >
+              {/if}
+            </div>
+            <textarea
+              id="sub-relatedCharacters"
+              use:autoresize={character.data.relatedCharacters}
+              bind:value={character.data.relatedCharacters}
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30"
+              placeholder="Describe relations to other characters..."
             ></textarea>
           </div>
         </div>
