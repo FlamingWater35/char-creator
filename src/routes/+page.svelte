@@ -3,7 +3,7 @@
   import { db, type Character } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
-  import { Plus, Trash2, Edit, Loader2 } from "lucide-svelte";
+  import { Plus, Trash2, Edit, Loader2, ImagePlus } from "lucide-svelte";
   import { fade } from "svelte/transition";
 
   let characters = $state<Character[]>([]);
@@ -29,6 +29,7 @@
         backstory: "",
         firstMessages: [""],
         exampleMessages: [],
+        image: null,
       },
     };
     await db.characters.add(newChar);
@@ -96,9 +97,25 @@
         class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow"
       >
         <div>
-          <h2 class="text-xl font-semibold mb-2 line-clamp-1">
-            {char.name || "Unnamed Character"}
-          </h2>
+          <div class="flex items-center gap-4 mb-4">
+            <div
+              class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center"
+            >
+              {#if char.data.image}
+                <img
+                  src={char.data.image}
+                  alt={char.name}
+                  class="w-full h-full object-cover"
+                />
+              {:else}
+                <span class="text-xl">🎭</span>
+              {/if}
+            </div>
+            <h2 class="text-xl font-semibold line-clamp-1">
+              {char.name || "Unnamed Character"}
+            </h2>
+          </div>
+
           <p class="text-sm text-muted-foreground mb-4 line-clamp-3">
             {char.data.mainPrompt || "No core concept provided."}
           </p>
@@ -106,13 +123,13 @@
         <div class="flex items-center gap-2 mt-4 pt-4 border-t border-border">
           <a
             href="/editor/{char.id}"
-            class="flex-1 flex items-center justify-center gap-2 bg-secondary text-secondary-foreground py-2 rounded-md hover:opacity-80 transition-opacity font-medium"
+            class="flex-1 flex items-center justify-center gap-2 bg-secondary text-secondary-foreground py-2 rounded-md hover:bg-secondary/80 transition-colors border shadow-sm font-medium"
           >
             <Edit class="w-4 h-4" /> Edit
           </a>
           <button
             onclick={() => deleteChar(char.id)}
-            class="p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+            class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors"
             aria-label="Delete"
           >
             <Trash2 class="w-4 h-4" />

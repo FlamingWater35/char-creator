@@ -19,6 +19,7 @@ export interface Character {
     backstory: string;
     firstMessages: string[];
     exampleMessages: ExampleMessage[];
+    image?: string | null;
   };
 }
 
@@ -37,7 +38,6 @@ export class CharDB extends Dexie {
       characters: 'id, name, createdAt, updatedAt'
     }).upgrade(tx => {
       return tx.table('characters').toCollection().modify(char => {
-        // Migrate First Message to First Messages Array
         if (char.data.firstMessage !== undefined) {
           char.data.firstMessages = [char.data.firstMessage];
           delete char.data.firstMessage;
@@ -45,7 +45,6 @@ export class CharDB extends Dexie {
           char.data.firstMessages = [''];
         }
 
-        // Migrate Example Messages
         if (char.data.dialogueExamples !== undefined) {
           char.data.exampleMessages = [{
             id: crypto.randomUUID(),
@@ -57,11 +56,21 @@ export class CharDB extends Dexie {
           char.data.exampleMessages = [];
         }
 
-        // Flatten old description object to Main Description + Subfield Backstory
         if (typeof char.data.description === 'object') {
           const oldDesc = char.data.description;
           char.data.backstory = oldDesc.backstory || '';
           char.data.description = [oldDesc.general, oldDesc.appearance].filter(Boolean).join('\n\n');
+        }
+      });
+    });
+
+    // Version 3: Adds character avatar support
+    this.version(3).stores({
+      characters: 'id, name, createdAt, updatedAt'
+    }).upgrade(tx => {
+      return tx.table('characters').toCollection().modify(char => {
+        if (char.data.image === undefined) {
+          char.data.image = null;
         }
       });
     });

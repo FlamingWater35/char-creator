@@ -7,6 +7,10 @@
   import { autoresize } from "$lib/autoresize";
   import { fade } from "svelte/transition";
   import {
+    injectCharacterCardMetadata,
+    generateDefaultBlackPNG,
+  } from "$lib/png";
+  import {
     Sparkles,
     Loader2,
     Save,
@@ -16,6 +20,8 @@
     Copy,
     Check,
     X,
+    ImagePlus,
+    Download,
   } from "lucide-svelte";
   import { goto } from "$app/navigation";
 
@@ -32,6 +38,8 @@
 
   let activeGeneratingField = $state<string | null>(null);
   let aiAbortController = $state<AbortController | null>(null);
+
+  let fileInput = $state<HTMLInputElement>();
 
   onMount(async () => {
     if (!characterId) return goto("/");
@@ -57,7 +65,7 @@
       clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         saveCharacter();
-      }, 5000);
+      }, 1000);
     }
   });
 
@@ -81,6 +89,55 @@
         console.error("Autosave failed:", err);
         saveState = "idle";
       });
+  }
+
+  async function handleImageUpload(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    // Check compression threshold & type format requirement
+    const needsCompression = file.size > 2 * 1024 * 1024;
+    const needsConversion = file.type !== "image/png";
+
+    if (needsCompression || needsConversion) {
+      await dialogs.alert(
+        "Your image will be automatically compressed and converted to PNG to conform to file size bounds.",
+        "Processing Image",
+      );
+    }
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let { width, height } = img;
+          const MAX_SIZE = 1024;
+
+          // Downscale
+          if (width > MAX_SIZE || height > MAX_SIZE) {
+            const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+            width *= ratio;
+            height *= ratio;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL("image/png", 0.9);
+            if (character) character.data.image = dataUrl;
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error(error);
+      dialogs.alert("Failed to process image.", "Error");
+    }
   }
 
   function cancelGeneration() {
@@ -241,6 +298,69 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
     generatingAll = false;
   }
 
+  function downloadCardPNG() {
+    if (!character) return;
+
+    let imgData = character.data.image;
+    if (!imgData) {
+      imgData = generateDefaultBlackPNG();
+    }
+
+    const v3Data = {
+      spec: "chara_card_v3",
+      spec_version: "3.0",
+      data: {
+        name: character.name,
+        description: [character.data.description, character.data.backstory]
+          .filter(Boolean)
+          .join("\n\n"),
+        personality: character.data.personality,
+        scenario: character.data.scenario,
+        first_mes: character.data.firstMessages[0] || "",
+        alternate_greetings: character.data.firstMessages
+          .slice(1)
+          .filter(Boolean),
+        mes_example: character.data.exampleMessages
+          .filter((ex) => ex.character.trim())
+          .map((ex) => {
+            let s = "<START>\n";
+            if (ex.user.trim()) s += `{{user}}: ${ex.user.trim()}\n`;
+            s += `{{char}}: ${ex.character.trim()}`;
+            return s;
+          })
+          .join("\n\n"),
+        creator_notes: "",
+        system_prompt: "",
+        post_history_instructions: "",
+        group_only_greetings: [],
+        tags: [],
+        creator: "",
+        character_version: "1.0",
+        character_book: {},
+        assets: [],
+        extensions: {},
+        creation_date: Math.floor(character.createdAt.getTime() / 1000),
+        modification_date: Math.floor(character.updatedAt.getTime() / 1000),
+      },
+    };
+
+    try {
+      const finalDataUrl = injectCharacterCardMetadata(
+        imgData,
+        JSON.stringify(v3Data),
+      );
+      const a = document.createElement("a");
+      a.href = finalDataUrl;
+      const safeName =
+        character.name.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "character";
+      a.download = `${safeName}_card.png`;
+      a.click();
+    } catch (e) {
+      console.error(e);
+      dialogs.alert("Failed to generate Character Card.", "Export Error");
+    }
+  }
+
   function copyToClipboard() {
     if (!character) return;
     const c = character.data;
@@ -316,7 +436,6 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
   <title>Editing: {character?.name || "Loading"} - Char Creator</title>
 </svelte:head>
 
-<!-- Grid layout strictly for crossfading the loading state and content state -->
 <div class="page-transition-grid">
   {#if loading}
     <div
@@ -340,28 +459,70 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
       <!-- Header Section -->
       <div
-        class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4"
+        class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6"
       >
-        <input
-          type="text"
-          bind:value={character.name}
-          aria-label="Character Name"
-          class="text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full"
-          placeholder="Character Name"
-        />
+        <div class="flex items-center gap-4 flex-1">
+          <button
+            class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm"
+            onclick={() => fileInput?.click()}
+            aria-label="Upload character image"
+          >
+            {#if character.data.image}
+              <img
+                src={character.data.image}
+                alt="Avatar"
+                class="w-full h-full object-cover"
+              />
+              <div
+                class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+              >
+                <ImagePlus class="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+              </div>
+            {:else}
+              <ImagePlus
+                class="w-8 h-8 text-muted-foreground group-hover:text-foreground transition-colors"
+              />
+            {/if}
+          </button>
+          <input
+            type="file"
+            accept="image/*"
+            class="hidden"
+            bind:this={fileInput}
+            onchange={handleImageUpload}
+          />
+
+          <input
+            type="text"
+            bind:value={character.name}
+            aria-label="Character Name"
+            class="text-3xl sm:text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full min-w-0"
+            placeholder="Character Name"
+          />
+        </div>
+
         <div
           class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
         >
-          <button
-            onclick={copyToClipboard}
-            class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
-          >
-            {#if copied}
-              <Check class="w-4 h-4" /> Copied!
-            {:else}
-              <Copy class="w-4 h-4" /> Export to Clipboard
-            {/if}
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              onclick={copyToClipboard}
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm"
+            >
+              {#if copied}
+                <Check class="w-4 h-4" /> Copied!
+              {:else}
+                <Copy class="w-4 h-4" /> Text
+              {/if}
+            </button>
+            <button
+              onclick={downloadCardPNG}
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm"
+            >
+              <Download class="w-4 h-4" /> PNG Card
+            </button>
+          </div>
+
           <div
             class="flex items-center justify-center gap-2 px-4 py-2 bg-secondary rounded-md min-w-40"
           >
@@ -444,7 +605,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Description"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-3 py-1.5 rounded-md hover:bg-destructive/10 transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -455,7 +616,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.description,
                       (v) => (character!.data.description = v),
                     )}
-                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-3 py-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -482,7 +643,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               </div>
               <button
                 onclick={addFirstMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -503,8 +664,8 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       {#if activeGeneratingField === `First Message ${i}`}
                         <button
                           onclick={cancelGeneration}
-                          class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                          ><X class="w-3 h-3" /> Cancel</button
+                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1.5 rounded-md text-xs font-medium shadow-sm transition-colors"
+                          ><X class="w-3.5 h-3.5" /> Cancel</button
                         >
                       {:else}
                         <button
@@ -514,14 +675,14 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                               msg,
                               (v) => (character!.data.firstMessages[i] = v),
                             )}
-                          class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                          ><Sparkles class="w-3 h-3" /> Enhance</button
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors"
+                          ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
                       {#if i > 0}
                         <button
                           onclick={() => removeFirstMessage(i)}
-                          class="p-1 text-muted-foreground hover:text-destructive transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                          class="p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                           ><Trash2 class="w-4 h-4" /></button
                         >
                       {/if}
@@ -551,7 +712,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               </div>
               <button
                 onclick={addExampleMessage}
-                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
               >
                 <Plus class="w-4 h-4" /> Add
               </button>
@@ -568,11 +729,11 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
               {#each character.data.exampleMessages as ex, i (ex.id)}
                 <div
-                  class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4"
+                  class="bg-card border rounded-lg p-4 sm:p-5 shadow-sm relative space-y-4 group"
                 >
                   <button
                     onclick={() => removeExampleMessage(ex.id)}
-                    class="absolute top-4 right-4 p-1 text-muted-foreground hover:text-destructive transition-colors"
+                    class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                     ><Trash2 class="w-4 h-4" /></button
                   >
                   <div class="pr-8">
@@ -599,8 +760,8 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       {#if activeGeneratingField === `Example Message ${i}`}
                         <button
                           onclick={cancelGeneration}
-                          class="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
-                          ><X class="w-3 h-3" /> Cancel</button
+                          class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors"
+                          ><X class="w-3.5 h-3.5" /> Cancel</button
                         >
                       {:else}
                         <button
@@ -610,8 +771,8 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                               ex.character,
                               (v) => (ex.character = v),
                             )}
-                          class="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
-                          ><Sparkles class="w-3 h-3" /> Enhance</button
+                          class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors"
+                          ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
                         >
                       {/if}
                     </div>
@@ -645,7 +806,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Personality"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -656,7 +817,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.personality,
                       (v) => (character!.data.personality = v),
                     )}
-                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -677,7 +838,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Scenario"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -688,7 +849,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.scenario,
                       (v) => (character!.data.scenario = v),
                     )}
-                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
@@ -709,7 +870,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
               {#if activeGeneratingField === "Backstory"}
                 <button
                   onclick={cancelGeneration}
-                  class="flex items-center gap-1 text-sm text-destructive hover:text-destructive/80 font-medium px-2 py-1 rounded hover:bg-destructive/10 transition-colors"
+                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors"
                   ><X class="w-4 h-4" /> Cancel</button
                 >
               {:else}
@@ -720,7 +881,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
                       character!.data.backstory,
                       (v) => (character!.data.backstory = v),
                     )}
-                  class="flex items-center gap-1 text-sm text-blue-500 hover:text-blue-600 font-medium px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950 transition-colors"
+                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors"
                   ><Sparkles class="w-4 h-4" /> Enhance</button
                 >
               {/if}
