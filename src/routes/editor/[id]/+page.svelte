@@ -346,6 +346,16 @@ ${JSON.stringify(schemaObj, null, 2)}`;
 
     let finalDesc = character.data.description.trim();
     let appended: string[] = [];
+
+    if (settings.mergeTraitsOnExport) {
+      if (character.data.personality?.trim()) {
+        appended.push(`Personality: ${character.data.personality.trim()}`);
+      }
+      if (character.data.scenario?.trim()) {
+        appended.push(`Scenario: ${character.data.scenario.trim()}`);
+      }
+    }
+
     if (character.data.backstory?.trim())
       appended.push(`Backstory: ${character.data.backstory.trim()}`);
     if (character.data.relatedCharacters?.trim())
@@ -363,8 +373,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       data: {
         name: character.name,
         description: finalDesc,
-        personality: character.data.personality,
-        scenario: character.data.scenario,
+
+        personality: settings.mergeTraitsOnExport
+          ? ""
+          : character.data.personality,
+        scenario: settings.mergeTraitsOnExport ? "" : character.data.scenario,
         first_mes: character.data.firstMessages[0] || "",
         alternate_greetings: character.data.firstMessages
           .slice(1)

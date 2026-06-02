@@ -85,6 +85,7 @@
       genFirstMessages: settings.genFirstMessages,
       genExampleMessages: settings.genExampleMessages,
       genRelatedCharacters: settings.genRelatedCharacters,
+      mergeTraitsOnExport: settings.mergeTraitsOnExport,
     };
 
     settings.save();
@@ -181,6 +182,7 @@
           genFirstMessages: settings.genFirstMessages,
           genExampleMessages: settings.genExampleMessages,
           genRelatedCharacters: settings.genRelatedCharacters,
+          mergeTraitsOnExport: settings.mergeTraitsOnExport,
         },
         characters: allCharacters,
       };
@@ -257,6 +259,8 @@
           settings.genExampleMessages = s.genExampleMessages;
         if (typeof s.genRelatedCharacters === "boolean")
           settings.genRelatedCharacters = s.genRelatedCharacters;
+        if (typeof s.mergeTraitsOnExport === "boolean")
+          settings.mergeTraitsOnExport = s.mergeTraitsOnExport;
 
         settings.save();
       }
@@ -727,6 +731,46 @@
             </button>
           {/each}
         </div>
+      </div>
+
+      <!-- Export Compatibility Options Section -->
+      <div class="p-6 bg-secondary/10 space-y-6">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
+            <FileDown class="w-5 h-5" />
+          </div>
+          <h2 class="text-xl font-bold">Export Compatibility</h2>
+        </div>
+
+        <button
+          role="switch"
+          aria-checked={settings.mergeTraitsOnExport}
+          onclick={() =>
+            (settings.mergeTraitsOnExport = !settings.mergeTraitsOnExport)}
+          class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm w-full"
+        >
+          <div class="space-y-1 pr-4">
+            <span
+              class="text-sm font-bold group-hover:text-primary transition-colors block"
+              >Merge Traits on Export</span
+            >
+            <span class="text-xs text-muted-foreground block"
+              >Appends personality and scenario to description inside exported
+              PNG cards.</span
+            >
+          </div>
+          <div
+            class="w-10 h-6 rounded-full relative transition-colors shrink-0 {settings.mergeTraitsOnExport
+              ? 'bg-blue-600'
+              : 'bg-muted'}"
+          >
+            <div
+              class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform {settings.mergeTraitsOnExport
+                ? 'translate-x-4'
+                : 'translate-x-0'} shadow-sm"
+            ></div>
+          </div>
+        </button>
       </div>
 
       <!-- Database & Maintenance Section -->

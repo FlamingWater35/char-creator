@@ -92,6 +92,23 @@
     return examples;
   }
 
+  function extractSection(
+    text: string,
+    header: string,
+  ): { content: string; cleanedText: string } {
+    const regex = new RegExp(
+      `(?:^|\\n)${header}\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Personality|Scenario|Backstory|Related Characters)\\s*:|$)`,
+      "i",
+    );
+    const match = text.match(regex);
+    if (match) {
+      const content = match[1].trim();
+      const cleanedText = text.replace(match[0], "").trim();
+      return { content, cleanedText };
+    }
+    return { content: "", cleanedText: text };
+  }
+
   async function handleImportCard(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -117,33 +134,38 @@
         mainPrompt = data.extensions.char_creator.mainPrompt;
       }
 
-      const fullDesc = data.description || "";
-      let description = fullDesc;
+      let fullDesc = data.description || "";
+
+      let personality = (data.personality || "").trim();
+      let scenario = (data.scenario || "").trim();
       let backstory = "";
-
-      const backstoryIndex = fullDesc.toLowerCase().indexOf("backstory:");
-      if (backstoryIndex !== -1) {
-        description = fullDesc.substring(0, backstoryIndex).trim();
-        backstory = fullDesc.substring(backstoryIndex + 10).trim();
-      }
-
       let relatedCharacters = "";
-      const relCharIndex = fullDesc
-        .toLowerCase()
-        .indexOf("related characters:");
-      if (relCharIndex !== -1) {
-        const beforeRel = fullDesc.substring(0, relCharIndex).trim();
-        const afterRel = fullDesc.substring(relCharIndex + 19).trim();
-        relatedCharacters = afterRel;
 
-        const bstIndex = beforeRel.toLowerCase().indexOf("backstory:");
-        if (bstIndex !== -1) {
-          description = beforeRel.substring(0, bstIndex).trim();
-          backstory = beforeRel.substring(bstIndex + 10).trim();
-        } else {
-          description = beforeRel;
-        }
+      let extraction = extractSection(fullDesc, "Personality");
+      if (extraction.content) {
+        if (!personality) personality = extraction.content;
+        fullDesc = extraction.cleanedText;
       }
+
+      extraction = extractSection(fullDesc, "Scenario");
+      if (extraction.content) {
+        if (!scenario) scenario = extraction.content;
+        fullDesc = extraction.cleanedText;
+      }
+
+      extraction = extractSection(fullDesc, "Backstory");
+      if (extraction.content) {
+        backstory = extraction.content;
+        fullDesc = extraction.cleanedText;
+      }
+
+      extraction = extractSection(fullDesc, "Related Characters");
+      if (extraction.content) {
+        relatedCharacters = extraction.content;
+        fullDesc = extraction.cleanedText;
+      }
+
+      const description = fullDesc.trim();
 
       if (!mainPrompt) {
         mainPrompt = description.substring(0, 150) || name;
@@ -170,8 +192,8 @@
         data: {
           mainPrompt,
           description,
-          personality: data.personality || "",
-          scenario: data.scenario || "",
+          personality,
+          scenario,
           backstory,
           relatedCharacters,
           firstMessages,

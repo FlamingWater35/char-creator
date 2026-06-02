@@ -23,6 +23,9 @@ class Settings {
   genExampleMessages = $state(true);
   genRelatedCharacters = $state(false);
 
+  // Export Compatibility parameters
+  mergeTraitsOnExport = $state(false);
+
   constructor() {
     this.load();
   }
@@ -49,6 +52,8 @@ class Settings {
       this.genFirstMessages = localStorage.getItem('or_gen_fmsg') !== 'false';
       this.genExampleMessages = localStorage.getItem('or_gen_emsg') !== 'false';
       this.genRelatedCharacters = localStorage.getItem('or_gen_rchar') === 'true';
+
+      this.mergeTraitsOnExport = localStorage.getItem('or_merge_export') === 'true';
     }
   }
 
@@ -74,6 +79,8 @@ class Settings {
       localStorage.setItem('or_gen_fmsg', this.genFirstMessages ? 'true' : 'false');
       localStorage.setItem('or_gen_emsg', this.genExampleMessages ? 'true' : 'false');
       localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
+
+      localStorage.setItem('or_merge_export', this.mergeTraitsOnExport ? 'true' : 'false');
     }
   }
 
@@ -95,6 +102,7 @@ class Settings {
     this.genFirstMessages = true;
     this.genExampleMessages = true;
     this.genRelatedCharacters = false;
+    this.mergeTraitsOnExport = false;
     this.save();
   }
 }
