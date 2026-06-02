@@ -1,8 +1,9 @@
 <script lang="ts">
   import { settings } from "$lib/settings.svelte";
+  import { db } from "$lib/db";
+  import { dialogs } from "$lib/dialogs.svelte";
   import { onMount } from "svelte";
   import {
-    Save,
     Loader2,
     Search,
     ChevronDown,
@@ -13,13 +14,16 @@
     Cpu,
     Settings2,
     Sparkles,
+    FileDown,
+    FileUp,
+    Trash2,
+    RotateCcw,
   } from "lucide-svelte";
   import { setMode, resetMode } from "mode-watcher";
-  import { slide, fade } from "svelte/transition";
+  import { slide } from "svelte/transition";
 
   let models = $state<{ id: string; name: string }[]>([]);
   let loadingModels = $state(false);
-  let saved = $state(false);
 
   let dropdownOpen = $state(false);
   let searchQuery = $state("");
@@ -27,6 +31,9 @@
 
   let showApiKey = $state(false);
   let advancedOpen = $state(false);
+
+  let fileInputImportDB = $state<HTMLInputElement>();
+  let autosaveStatus = $state("Synced");
 
   const providerDefaults: Record<string, string> = {
     openrouter: "openai/gpt-chat-latest",
@@ -56,6 +63,36 @@
     settings.load();
     themePreference = localStorage.getItem("mode-watcher-mode") || "system";
     await fetchModels();
+  });
+
+  // Automatically watch and persist settings upon any input bindings updates
+  $effect(() => {
+    const _ = {
+      apiKey: settings.apiKey,
+      model: settings.model,
+      temperature: settings.temperature,
+      frequencyPenalty: settings.frequencyPenalty,
+      presencePenalty: settings.presencePenalty,
+      topP: settings.topP,
+      maxTokens: settings.maxTokens,
+      provider: settings.provider,
+      customBaseUrl: settings.customBaseUrl,
+      genName: settings.genName,
+      genDescription: settings.genDescription,
+      genPersonality: settings.genPersonality,
+      genScenario: settings.genScenario,
+      genBackstory: settings.genBackstory,
+      genFirstMessages: settings.genFirstMessages,
+      genExampleMessages: settings.genExampleMessages,
+      genRelatedCharacters: settings.genRelatedCharacters,
+    };
+
+    settings.save();
+    autosaveStatus = "Saving changes...";
+    const t = setTimeout(() => {
+      autosaveStatus = "All changes saved locally";
+    }, 1000);
+    return () => clearTimeout(t);
   });
 
   async function fetchModels() {
@@ -113,16 +150,194 @@
     }
   }
 
-  function saveSettings() {
-    settings.save();
-    saved = true;
-    setTimeout(() => (saved = false), 2000);
-  }
-
   function selectModel(id: string) {
     settings.model = id;
     dropdownOpen = false;
     searchQuery = "";
+  }
+
+  async function exportDatabase() {
+    try {
+      const allCharacters = await db.characters.toArray();
+      const backup = {
+        app: "char-creator",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: {
+          apiKey: settings.apiKey,
+          model: settings.model,
+          temperature: settings.temperature,
+          frequencyPenalty: settings.frequencyPenalty,
+          presencePenalty: settings.presencePenalty,
+          topP: settings.topP,
+          maxTokens: settings.maxTokens,
+          provider: settings.provider,
+          customBaseUrl: settings.customBaseUrl,
+          genName: settings.genName,
+          genDescription: settings.genDescription,
+          genPersonality: settings.genPersonality,
+          genScenario: settings.genScenario,
+          genBackstory: settings.genBackstory,
+          genFirstMessages: settings.genFirstMessages,
+          genExampleMessages: settings.genExampleMessages,
+          genRelatedCharacters: settings.genRelatedCharacters,
+        },
+        characters: allCharacters,
+      };
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `char_creator_backup_${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      dialogs.alert("Export failed: " + e.message, "Export Error");
+    }
+  }
+
+  async function importDatabase(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const confirmed = await dialogs.confirm(
+      "Importing database will overwrite current configuration settings and merge characters. Proceed with import?",
+      "Import Backup Data",
+    );
+    if (!confirmed) {
+      if (fileInputImportDB) fileInputImportDB.value = "";
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+
+      if (backup.app !== "char-creator") {
+        const proceedAnyway = await dialogs.confirm(
+          "This file does not match Char Creator standards. Attempt import anyway?",
+          "Format Warning",
+        );
+        if (!proceedAnyway) {
+          if (fileInputImportDB) fileInputImportDB.value = "";
+          return;
+        }
+      }
+
+      if (backup.settings) {
+        const s = backup.settings;
+        if (typeof s.apiKey === "string") settings.apiKey = s.apiKey;
+        if (typeof s.model === "string") settings.model = s.model;
+        if (typeof s.temperature === "number")
+          settings.temperature = s.temperature;
+        if (typeof s.frequencyPenalty === "number")
+          settings.frequencyPenalty = s.frequencyPenalty;
+        if (typeof s.presencePenalty === "number")
+          settings.presencePenalty = s.presencePenalty;
+        if (typeof s.topP === "number") settings.topP = s.topP;
+        if (typeof s.maxTokens === "number") settings.maxTokens = s.maxTokens;
+        if (typeof s.provider === "string") settings.provider = s.provider;
+        if (typeof s.customBaseUrl === "string")
+          settings.customBaseUrl = s.customBaseUrl;
+        if (typeof s.genName === "boolean") settings.genName = s.genName;
+        if (typeof s.genDescription === "boolean")
+          settings.genDescription = s.genDescription;
+        if (typeof s.genPersonality === "boolean")
+          settings.genPersonality = s.genPersonality;
+        if (typeof s.genScenario === "boolean")
+          settings.genScenario = s.genScenario;
+        if (typeof s.genBackstory === "boolean")
+          settings.genBackstory = s.genBackstory;
+        if (typeof s.genFirstMessages === "boolean")
+          settings.genFirstMessages = s.genFirstMessages;
+        if (typeof s.genExampleMessages === "boolean")
+          settings.genExampleMessages = s.genExampleMessages;
+        if (typeof s.genRelatedCharacters === "boolean")
+          settings.genRelatedCharacters = s.genRelatedCharacters;
+
+        settings.save();
+      }
+
+      if (Array.isArray(backup.characters)) {
+        let importedCount = 0;
+        for (const char of backup.characters) {
+          if (!char.id || !char.name) continue;
+
+          const finalChar = {
+            id: char.id,
+            name: char.name,
+            createdAt: char.createdAt ? new Date(char.createdAt) : new Date(),
+            updatedAt: char.updatedAt ? new Date(char.updatedAt) : new Date(),
+            data: {
+              mainPrompt: char.data?.mainPrompt || "",
+              description: char.data?.description || "",
+              personality: char.data?.personality || "",
+              scenario: char.data?.scenario || "",
+              backstory: char.data?.backstory || "",
+              firstMessages: Array.isArray(char.data?.firstMessages)
+                ? char.data.firstMessages
+                : [""],
+              exampleMessages: Array.isArray(char.data?.exampleMessages)
+                ? char.data.exampleMessages
+                : [],
+              image: char.data?.image || null,
+              relatedCharacters: char.data?.relatedCharacters || "",
+            },
+          };
+
+          await db.characters.put(finalChar);
+          importedCount++;
+        }
+        await dialogs.alert(
+          `Successfully updated configurations and loaded ${importedCount} characters.`,
+          "Database Restored",
+        );
+      } else {
+        await dialogs.alert(
+          "Restored settings. No characters found to load.",
+          "Database Restored",
+        );
+      }
+
+      await fetchModels();
+    } catch (error: any) {
+      console.error(error);
+      dialogs.alert("Error importing file: " + error.message, "Import failed");
+    } finally {
+      if (fileInputImportDB) fileInputImportDB.value = "";
+    }
+  }
+
+  async function handleDeleteAll() {
+    const confirmed = await dialogs.confirm(
+      "Are you sure you want to delete ALL characters? This action is permanent and cannot be undone.",
+      "Dangerous Action",
+    );
+    if (confirmed) {
+      const doubleCheck = await dialogs.confirm(
+        "Please confirm again. Do you really want to permanently delete all your characters?",
+        "Final Confirmation",
+      );
+      if (doubleCheck) {
+        await db.characters.clear();
+        await dialogs.alert("All character files deleted.", "Clear Completed");
+      }
+    }
+  }
+
+  async function handleResetSettings() {
+    const confirmed = await dialogs.confirm(
+      "Are you sure you want to reset all configurations to standard defaults?",
+      "Reset Defaults",
+    );
+    if (confirmed) {
+      settings.resetToDefaults();
+      await fetchModels();
+      await dialogs.alert("Settings restored to defaults.", "Reset Successful");
+    }
   }
 </script>
 
@@ -134,7 +349,7 @@
   <div>
     <h1 class="text-4xl font-black tracking-tight mb-2">Settings</h1>
     <p class="text-muted-foreground text-lg">
-      Configure your AI model and application preferences.
+      Configure your AI model and database files.
     </p>
   </div>
 
@@ -513,27 +728,59 @@
           {/each}
         </div>
       </div>
+
+      <!-- Database & Maintenance Section -->
+      <div class="p-6 space-y-6 bg-card">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-destructive/10 text-destructive rounded-lg">
+            <Settings2 class="w-5 h-5" />
+          </div>
+          <h2 class="text-xl font-bold">Database & Maintenance</h2>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            onclick={exportDatabase}
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+          >
+            <FileDown class="w-4 h-4 text-blue-500" /> Export Database JSON
+          </button>
+          <button
+            onclick={() => fileInputImportDB?.click()}
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+          >
+            <FileUp class="w-4 h-4 text-purple-500" /> Import Database JSON
+          </button>
+          <button
+            onclick={handleResetSettings}
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+          >
+            <RotateCcw class="w-4 h-4 text-yellow-500" /> Reset Settings Defaults
+          </button>
+          <button
+            onclick={handleDeleteAll}
+            class="flex items-center justify-center gap-2 border border-transparent bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer animate-pulse"
+          >
+            <Trash2 class="w-4 h-4" /> Wipe Character Database
+          </button>
+        </div>
+
+        <input
+          type="file"
+          accept="application/json"
+          class="hidden"
+          bind:this={fileInputImportDB}
+          onchange={importDatabase}
+        />
+      </div>
     </div>
   </section>
 </div>
 
-<div class="fixed bottom-8 right-8 z-50">
-  {#if saved}
-    <div
-      in:fade
-      out:fade
-      role="status"
-      class="absolute bottom-full right-0 mb-4 bg-emerald-500 text-white px-4 py-2 rounded-xl shadow-lg font-bold text-sm whitespace-nowrap"
-    >
-      Settings Saved!
-    </div>
-  {/if}
-
-  <button
-    onclick={saveSettings}
-    class="flex items-center gap-3 bg-primary text-primary-foreground px-6 py-4 rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all font-black text-base cursor-pointer group"
-  >
-    <Save class="w-6 h-6 group-hover:rotate-12 transition-transform" />
-    Save Settings
-  </button>
+<!-- Reactive Autosave Status Indicator -->
+<div
+  class="fixed bottom-6 right-6 z-40 bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+>
+  <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+  <span>{autosaveStatus}</span>
 </div>

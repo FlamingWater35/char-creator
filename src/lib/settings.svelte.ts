@@ -76,5 +76,26 @@ class Settings {
       localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
     }
   }
+
+  resetToDefaults() {
+    this.apiKey = '';
+    this.model = 'openai/gpt-chat-latest';
+    this.temperature = 0.8;
+    this.frequencyPenalty = 0;
+    this.presencePenalty = 0;
+    this.topP = 1.0;
+    this.maxTokens = 8192;
+    this.provider = 'openrouter';
+    this.customBaseUrl = '';
+    this.genName = true;
+    this.genDescription = true;
+    this.genPersonality = true;
+    this.genScenario = true;
+    this.genBackstory = true;
+    this.genFirstMessages = true;
+    this.genExampleMessages = true;
+    this.genRelatedCharacters = false;
+    this.save();
+  }
 }
 export const settings = new Settings();

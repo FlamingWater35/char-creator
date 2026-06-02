@@ -91,6 +91,54 @@ export function injectCharacterCardMetadata(base64Image: string, jsonString: str
   return 'data:image/png;base64,' + uint8ToBase64(newPng);
 }
 
+export function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): string | null {
+  const view = new DataView(arrayBuffer);
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // Verify PNG signature
+  if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
+    throw new Error("Invalid PNG file signature");
+  }
+
+  let pos = 8;
+  const decoder = new TextDecoder("utf-8");
+
+  while (pos < bytes.length) {
+    if (pos + 8 > bytes.length) break;
+    const length = view.getUint32(pos, false);
+    const typeBytes = bytes.subarray(pos + 4, pos + 8);
+    const type = decoder.decode(typeBytes);
+
+    if (type === 'tEXt') {
+      const chunkData = bytes.subarray(pos + 8, pos + 8 + length);
+      let nullPos = -1;
+      for (let i = 0; i < chunkData.length; i++) {
+        if (chunkData[i] === 0) {
+          nullPos = i;
+          break;
+        }
+      }
+      if (nullPos !== -1) {
+        const keyword = decoder.decode(chunkData.subarray(0, nullPos));
+        if (keyword === 'ccv3' || keyword === 'chara') {
+          const base64Data = decoder.decode(chunkData.subarray(nullPos + 1));
+          const binaryString = atob(base64Data.trim());
+          const len = binaryString.length;
+          const jsonBytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            jsonBytes[i] = binaryString.charCodeAt(i);
+          }
+          return decoder.decode(jsonBytes);
+        }
+      }
+    }
+
+    pos += 12 + length; // length (4) + type (4) + data (length) + crc (4)
+  }
+
+  return null;
+}
+
 export function generateDefaultBlackPNG(): string {
   const canvas = document.createElement('canvas');
   canvas.width = 400;

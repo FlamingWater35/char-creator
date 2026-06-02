@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from "$app/stores";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { db, type Character, type ExampleMessage } from "$lib/db";
   import { settings } from "$lib/settings.svelte";
   import { dialogs } from "$lib/dialogs.svelte";
@@ -50,6 +50,15 @@
       goto("/");
     }
     loading = false;
+
+    window.addEventListener("beforeunload", forceImmediateSave);
+  });
+
+  onDestroy(() => {
+    forceImmediateSave();
+    if (typeof window !== "undefined") {
+      window.removeEventListener("beforeunload", forceImmediateSave);
+    }
   });
 
   $effect(() => {
@@ -89,6 +98,13 @@
         console.error("Autosave failed:", err);
         saveState = "idle";
       });
+  }
+
+  function forceImmediateSave() {
+    if (saveState === "waiting" && character) {
+      clearTimeout(saveTimeout);
+      saveCharacter();
+    }
   }
 
   async function handleImageUpload(e: Event) {
@@ -232,7 +248,6 @@ Respond ONLY with the improved content. Do not include any meta-commentary, mark
 
     generatingAll = true;
 
-    // Build JSON structure dynamically
     const schemaObj: Record<string, string> = {};
     if (settings.genName) schemaObj["name"] = "Character name";
     if (settings.genDescription)
@@ -266,13 +281,18 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     if (result) {
       try {
         let cleanJson = result.trim();
-        if (cleanJson.startsWith("```json"))
+        const startIdx = cleanJson.indexOf("{");
+        const endIdx = cleanJson.lastIndexOf("}");
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          cleanJson = cleanJson.substring(startIdx, endIdx + 1);
+        } else if (cleanJson.startsWith("```json")) {
           cleanJson = cleanJson
             .replace(/^```json/, "")
             .replace(/```$/, "")
             .trim();
-        else if (cleanJson.startsWith("```"))
+        } else if (cleanJson.startsWith("```")) {
           cleanJson = cleanJson.replace(/^```/, "").replace(/```$/, "").trim();
+        }
 
         const parsed = JSON.parse(cleanJson);
 
