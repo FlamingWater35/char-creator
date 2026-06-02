@@ -52,11 +52,11 @@
   );
 
   let selectedModelName = $derived(
-    models.length === 0
-      ? "No models found (API Key or active connection required)"
-      : models.find((m) => m.id === settings.model)?.name ||
-          settings.model ||
-          "Select a model...",
+    models.find((m) => m.id === settings.model)?.name ||
+      settings.model ||
+      (models.length === 0
+        ? "No models loaded (Check API connection)"
+        : "Select a model..."),
   );
 
   onMount(async () => {
@@ -119,7 +119,6 @@
         const currentExists = models.some((m) => m.id === settings.model);
 
         if (currentExists) {
-          settings.model = settings.model;
         } else if (preferredExists && preferredDefault) {
           settings.model = preferredDefault;
         } else {
@@ -127,12 +126,10 @@
         }
       } else {
         models = [];
-        settings.model = "";
       }
     } catch (e) {
       console.error("Failed to load models:", e);
       models = [];
-      settings.model = "";
     } finally {
       loadingModels = false;
     }
@@ -516,7 +513,7 @@
                 aria-labelledby="model-label"
                 aria-haspopup="listbox"
                 aria-expanded={dropdownOpen}
-                disabled={models.length === 0}
+                disabled={models.length === 0 && !settings.model}
                 onclick={() => (dropdownOpen = !dropdownOpen)}
                 class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >

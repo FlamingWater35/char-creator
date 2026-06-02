@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/stores";
-  import { onMount, onDestroy } from "svelte";
-  import { db, type Character, type ExampleMessage } from "$lib/db";
+  import { onMount, onDestroy, untrack } from "svelte";
+  import { db, type Character } from "$lib/db";
   import { settings } from "$lib/settings.svelte";
   import { dialogs } from "$lib/dialogs.svelte";
   import { autoresize } from "$lib/autoresize";
@@ -63,18 +63,23 @@
 
   $effect(() => {
     if (character) {
-      JSON.stringify(character);
+      const trigger = JSON.stringify({
+        name: character.name,
+        data: character.data,
+      });
 
       if (isInitialLoad) {
         isInitialLoad = false;
         return;
       }
 
-      saveState = "waiting";
-      clearTimeout(saveTimeout);
-      saveTimeout = setTimeout(() => {
-        saveCharacter();
-      }, 1000);
+      untrack(() => {
+        saveState = "waiting";
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+          saveCharacter();
+        }, 1000);
+      });
     }
   });
 
@@ -295,35 +300,95 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         }
 
         const parsed = JSON.parse(cleanJson);
-
-        if (settings.genName && parsed.name) character.name = parsed.name;
-        if (settings.genDescription && parsed.description)
-          character.data.description = parsed.description;
-        if (settings.genPersonality && parsed.personality)
-          character.data.personality = parsed.personality;
-        if (settings.genScenario && parsed.scenario)
-          character.data.scenario = parsed.scenario;
-        if (settings.genBackstory && parsed.backstory)
-          character.data.backstory = parsed.backstory;
-        if (settings.genRelatedCharacters && parsed.relatedCharacters)
-          character.data.relatedCharacters = parsed.relatedCharacters;
+        const dataPayload = parsed.data || parsed;
 
         if (
-          settings.genFirstMessages &&
-          Array.isArray(parsed.firstMessages) &&
-          parsed.firstMessages.length > 0
+          settings.genName &&
+          (dataPayload.name || dataPayload.character_name)
         ) {
-          character.data.firstMessages = parsed.firstMessages;
+          character.name = dataPayload.name || dataPayload.character_name;
+        }
+        if (
+          settings.genDescription &&
+          (dataPayload.description ||
+            dataPayload.desc ||
+            dataPayload.appearance)
+        ) {
+          character.data.description =
+            dataPayload.description ||
+            dataPayload.desc ||
+            dataPayload.appearance;
+        }
+        if (
+          settings.genPersonality &&
+          (dataPayload.personality ||
+            dataPayload.personality_traits ||
+            dataPayload.traits)
+        ) {
+          character.data.personality =
+            dataPayload.personality ||
+            dataPayload.personality_traits ||
+            dataPayload.traits;
+        }
+        if (
+          settings.genScenario &&
+          (dataPayload.scenario || dataPayload.setting || dataPayload.context)
+        ) {
+          character.data.scenario =
+            dataPayload.scenario || dataPayload.setting || dataPayload.context;
+        }
+        if (
+          settings.genBackstory &&
+          (dataPayload.backstory ||
+            dataPayload.backstory_details ||
+            dataPayload.origin)
+        ) {
+          character.data.backstory =
+            dataPayload.backstory ||
+            dataPayload.backstory_details ||
+            dataPayload.origin;
+        }
+        if (
+          settings.genRelatedCharacters &&
+          (dataPayload.relatedCharacters ||
+            dataPayload.related_characters ||
+            dataPayload.other_characters ||
+            dataPayload.relations)
+        ) {
+          character.data.relatedCharacters =
+            dataPayload.relatedCharacters ||
+            dataPayload.related_characters ||
+            dataPayload.other_characters ||
+            dataPayload.relations;
         }
 
-        if (Array.isArray(parsed.exampleMessages)) {
-          character.data.exampleMessages = parsed.exampleMessages.map(
-            (e: any) => ({
-              id: crypto.randomUUID(),
-              user: e.user || "",
-              character: e.character || "",
-            }),
-          );
+        const firstMsgRaw =
+          dataPayload.firstMessages ||
+          dataPayload.first_messages ||
+          dataPayload.greetings ||
+          dataPayload.first_mes ||
+          dataPayload.greeting;
+        if (settings.genFirstMessages && firstMsgRaw) {
+          if (Array.isArray(firstMsgRaw) && firstMsgRaw.length > 0) {
+            character.data.firstMessages = firstMsgRaw.filter(Boolean);
+          } else if (typeof firstMsgRaw === "string" && firstMsgRaw.trim()) {
+            character.data.firstMessages = [firstMsgRaw.trim()];
+          }
+        }
+
+        const exampleMsgRaw =
+          dataPayload.exampleMessages ||
+          dataPayload.example_messages ||
+          dataPayload.mes_example ||
+          dataPayload.dialogue_examples ||
+          dataPayload.dialogueExamples;
+        if (settings.genExampleMessages && Array.isArray(exampleMsgRaw)) {
+          character.data.exampleMessages = exampleMsgRaw.map((e: any) => ({
+            id: crypto.randomUUID(),
+            user: e.user || e.user_prompt || e.sender || "",
+            character:
+              e.character || e.char_response || e.response || e.text || "",
+          }));
         }
       } catch (e) {
         console.error("Failed to parse JSON response", e);
@@ -482,7 +547,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       character.data.firstMessages = [...character.data.firstMessages, ""];
   }
   function removeFirstMessage(index: number) {
-    if (character) character.data.firstMessages.splice(index, 1);
+    if (character) {
+      character.data.firstMessages = character.data.firstMessages.filter(
+        (_, i) => i !== index,
+      );
+    }
   }
   function addExampleMessage() {
     if (character)
