@@ -63,7 +63,18 @@
 
   $effect(() => {
     if (character) {
-      JSON.stringify(character);
+      const trackingDummy = {
+        name: character.name,
+        mainPrompt: character.data.mainPrompt,
+        description: character.data.description,
+        personality: character.data.personality,
+        scenario: character.data.scenario,
+        backstory: character.data.backstory,
+        relatedCharacters: character.data.relatedCharacters,
+        firstMessages: character.data.firstMessages.map((m) => m),
+        exampleMessages: character.data.exampleMessages.map((m) => ({ ...m })),
+        image: character.data.image,
+      };
 
       if (isInitialLoad) {
         isInitialLoad = false;
@@ -82,8 +93,9 @@
     if (!character) return;
     saveState = "saving";
 
+    character.updatedAt = new Date();
+
     const snap = $state.snapshot(character);
-    snap.updatedAt = new Date();
 
     db.characters
       .put(snap)
@@ -339,37 +351,46 @@ ${JSON.stringify(schemaObj, null, 2)}`;
   function downloadCardPNG() {
     if (!character) return;
 
-    let imgData = character.data.image;
+    const snap = $state.snapshot(character);
+
+    let imgData = snap.data.image;
     if (!imgData) {
       imgData = generateDefaultBlackPNG();
     }
 
-    let finalDesc = character.data.description.trim();
+    let finalDesc = snap.data.description.trim();
     let appended: string[] = [];
-    if (character.data.backstory?.trim())
-      appended.push(`Backstory: ${character.data.backstory.trim()}`);
-    if (character.data.relatedCharacters?.trim())
+    if (snap.data.backstory?.trim())
+      appended.push(`Backstory: ${snap.data.backstory.trim()}`);
+    if (snap.data.relatedCharacters?.trim())
       appended.push(
-        `Related Characters: ${character.data.relatedCharacters.trim()}`,
+        `Related Characters: ${snap.data.relatedCharacters.trim()}`,
       );
 
     if (appended.length > 0) {
       finalDesc += "\n\n" + appended.join("\n\n");
     }
 
+    const creationDate =
+      snap.createdAt instanceof Date
+        ? snap.createdAt
+        : new Date(snap.createdAt);
+    const modificationDate =
+      snap.updatedAt instanceof Date
+        ? snap.updatedAt
+        : new Date(snap.updatedAt);
+
     const v3Data = {
       spec: "chara_card_v3",
       spec_version: "3.0",
       data: {
-        name: character.name,
+        name: snap.name,
         description: finalDesc,
-        personality: character.data.personality,
-        scenario: character.data.scenario,
-        first_mes: character.data.firstMessages[0] || "",
-        alternate_greetings: character.data.firstMessages
-          .slice(1)
-          .filter(Boolean),
-        mes_example: character.data.exampleMessages
+        personality: snap.data.personality,
+        scenario: snap.data.scenario,
+        first_mes: snap.data.firstMessages[0] || "",
+        alternate_greetings: snap.data.firstMessages.slice(1).filter(Boolean),
+        mes_example: snap.data.exampleMessages
           .filter((ex) => ex.character.trim())
           .map((ex) => {
             let s = "<START>\n";
@@ -392,11 +413,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
         assets: [],
         extensions: {
           char_creator: {
-            mainPrompt: character.data.mainPrompt,
+            mainPrompt: snap.data.mainPrompt,
           },
         },
-        creation_date: Math.floor(character.createdAt.getTime() / 1000),
-        modification_date: Math.floor(character.updatedAt.getTime() / 1000),
+        creation_date: Math.floor(creationDate.getTime() / 1000),
+        modification_date: Math.floor(modificationDate.getTime() / 1000),
       },
     };
 
@@ -408,7 +429,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       const a = document.createElement("a");
       a.href = finalDataUrl;
       const safeName =
-        character.name.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "character";
+        snap.name.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "character";
       a.download = `${safeName}_card.png`;
       a.click();
     } catch (e) {
@@ -419,10 +440,12 @@ ${JSON.stringify(schemaObj, null, 2)}`;
 
   function copyToClipboard() {
     if (!character) return;
-    const c = character.data;
+
+    const snap = $state.snapshot(character);
+    const c = snap.data;
 
     let parts: string[] = [];
-    parts.push(`Name: ${character.name}`);
+    parts.push(`Name: ${snap.name}`);
 
     let descPart = c.description.trim();
     let subfields: string[] = [];
