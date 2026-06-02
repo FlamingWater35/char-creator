@@ -6,13 +6,16 @@
     Loader2,
     Search,
     ChevronDown,
-    Check,
     Eye,
     EyeOff,
     ChevronUp,
+    Palette,
+    Cpu,
+    Settings2,
+    Sparkles,
   } from "lucide-svelte";
   import { setMode, resetMode } from "mode-watcher";
-  import { slide } from "svelte/transition";
+  import { slide, fade } from "svelte/transition";
 
   let models = $state<{ id: string; name: string }[]>([]);
   let loadingModels = $state(false);
@@ -79,371 +82,350 @@
   <title>Settings - Char Creator</title>
 </svelte:head>
 
-<div class="max-w-2xl mx-auto space-y-8 pb-20">
+<div class="max-w-3xl mx-auto space-y-8 pb-32">
   <div>
-    <h1 class="text-3xl font-bold tracking-tight mb-2">Settings</h1>
-    <p class="text-muted-foreground">
-      Manage your AI configurations and preferences.
+    <h1 class="text-4xl font-black tracking-tight mb-2">Settings</h1>
+    <p class="text-muted-foreground text-lg">
+      Configure your AI model and application preferences.
     </p>
   </div>
 
-  <!-- General Settings -->
-  <div class="space-y-6 bg-card border rounded-xl p-6 shadow-sm">
-    <h2 class="text-xl font-bold border-b border-border pb-2">General</h2>
-
-    <div class="flex flex-col gap-3">
-      <label class="font-medium" for="theme">Appearance</label>
-      <select
-        id="theme"
-        bind:value={themePreference}
-        onchange={updateTheme}
-        class="border rounded-md px-4 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer"
-      >
-        <option value="system">Automatic (System)</option>
-        <option value="light">Light Mode</option>
-        <option value="dark">Dark Mode</option>
-      </select>
+  <section class="space-y-4">
+    <div
+      class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
+    >
+      <Palette class="w-4 h-4" /> Appearance
     </div>
-  </div>
-
-  <!-- AI Settings -->
-  <div class="space-y-6 bg-card border rounded-xl p-6 shadow-sm">
-    <h2 class="text-xl font-bold border-b border-border pb-2">
-      AI Configuration
-    </h2>
-
-    <div class="flex flex-col gap-3">
-      <label for="apiKey" class="font-medium">OpenRouter API Key</label>
-      <div class="relative flex items-center">
-        <input
-          type={showApiKey ? "text" : "password"}
-          id="apiKey"
-          bind:value={settings.apiKey}
-          class="border rounded-md pl-4 pr-12 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-          placeholder="sk-or-v1-..."
-        />
-        <button
-          type="button"
-          onclick={() => (showApiKey = !showApiKey)}
-          class="absolute right-3 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-          aria-label={showApiKey ? "Hide API Key" : "Show API Key"}
+    <div class="bg-card border rounded-2xl p-6 shadow-sm">
+      <div
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
+        <div>
+          <h3 class="text-lg font-bold">Theme Mode</h3>
+          <p class="text-sm text-muted-foreground">
+            Switch between light, dark, or system default.
+          </p>
+        </div>
+        <div
+          class="flex bg-secondary p-1 rounded-xl w-fit"
+          role="group"
+          aria-label="Theme preference"
         >
-          {#if showApiKey}
-            <EyeOff class="w-5 h-5" />
-          {:else}
-            <Eye class="w-5 h-5" />
-          {/if}
-        </button>
+          {#each ["system", "light", "dark"] as mode}
+            <button
+              onclick={() => {
+                themePreference = mode;
+                updateTheme();
+              }}
+              aria-pressed={themePreference === mode}
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer {themePreference ===
+              mode
+                ? 'bg-background shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'}"
+            >
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          {/each}
+        </div>
       </div>
     </div>
+  </section>
 
-    <div class="flex flex-col gap-3">
-      <div id="model-label" class="font-medium">Generation Model</div>
-      {#if loadingModels}
-        <div class="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 class="w-4 h-4 animate-spin" /> Loading models...
+  <section class="space-y-4">
+    <div
+      class="flex items-center gap-2 text-muted-foreground font-semibold uppercase tracking-wider text-xs"
+    >
+      <Settings2 class="w-4 h-4" /> Application Configuration
+    </div>
+
+    <div
+      class="bg-card border rounded-2xl shadow-sm overflow-hidden divide-y divide-border"
+    >
+      <div class="p-6 space-y-6">
+        <div class="flex items-center gap-3 mb-2">
+          <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
+            <Cpu class="w-5 h-5" />
+          </div>
+          <h2 class="text-xl font-bold">AI Engine</h2>
         </div>
-      {:else}
-        <div class="relative w-full">
-          <button
-            type="button"
-            aria-labelledby="model-label"
-            onclick={() => (dropdownOpen = !dropdownOpen)}
-            class="w-full flex items-center justify-between border rounded-md px-4 py-2 bg-background hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer"
-          >
-            <span class="truncate">{selectedModelName}</span>
-            <ChevronDown class="w-4 h-4 opacity-50 shrink-0" />
-          </button>
 
-          {#if dropdownOpen}
+        <div class="flex flex-col gap-3">
+          <label for="apiKey" class="font-bold text-sm"
+            >OpenRouter API Key</label
+          >
+          <div class="relative flex items-center">
+            <input
+              type={showApiKey ? "text" : "password"}
+              id="apiKey"
+              bind:value={settings.apiKey}
+              class="border rounded-xl pl-4 pr-12 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all"
+              placeholder="sk-or-v1-..."
+            />
             <button
               type="button"
-              class="fixed inset-0 z-40 cursor-default"
-              aria-label="Close dropdown"
-              onclick={() => (dropdownOpen = false)}
-            ></button>
-            <div
-              class="absolute top-full left-0 w-full z-50 bg-popover border border-border mt-1 rounded-md shadow-lg overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-150"
+              onclick={() => (showApiKey = !showApiKey)}
+              class="absolute right-3 p-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              aria-label={showApiKey ? "Hide API Key" : "Show API Key"}
             >
-              <div
-                class="p-2 border-b border-border flex items-center gap-2 bg-background"
+              {#if showApiKey}
+                <EyeOff class="w-5 h-5" />
+              {:else}
+                <Eye class="w-5 h-5" />
+              {/if}
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <div id="model-label" class="font-bold text-sm">Active Model</div>
+          {#if loadingModels}
+            <div
+              class="flex items-center gap-3 py-3 px-4 bg-muted rounded-xl animate-pulse"
+              aria-busy="true"
+            >
+              <Loader2 class="w-4 h-4 animate-spin" />
+              <span class="text-sm">Fetching available models...</span>
+            </div>
+          {:else}
+            <div class="relative w-full">
+              <button
+                type="button"
+                aria-labelledby="model-label"
+                aria-haspopup="listbox"
+                aria-expanded={dropdownOpen}
+                onclick={() => (dropdownOpen = !dropdownOpen)}
+                class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer"
               >
-                <Search class="w-4 h-4 text-muted-foreground shrink-0" />
-                <input
-                  type="text"
-                  bind:value={searchQuery}
-                  placeholder="Search models..."
-                  aria-label="Search models"
-                  class="w-full bg-transparent focus:outline-none text-sm py-1"
-                  autocomplete="off"
-                />
-              </div>
-              <div class="overflow-y-auto flex-1 p-1">
-                {#each filteredModels as model}
-                  <button
-                    type="button"
-                    onclick={() => selectModel(model.id)}
-                    class="w-full flex items-center justify-between text-left px-3 py-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground transition-colors {settings.model ===
-                    model.id
-                      ? 'bg-accent/50'
-                      : ''}"
+                <span class="truncate font-medium">{selectedModelName}</span>
+                <ChevronDown class="w-4 h-4 opacity-50 shrink-0" />
+              </button>
+
+              {#if dropdownOpen}
+                <button
+                  type="button"
+                  class="fixed inset-0 z-40"
+                  onclick={() => (dropdownOpen = false)}
+                  aria-label="Close model selector"
+                ></button>
+                <div
+                  class="absolute top-full left-0 w-full z-50 bg-popover border border-border mt-2 rounded-xl shadow-xl overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-200"
+                  role="listbox"
+                >
+                  <div
+                    class="p-3 border-b border-border flex items-center gap-2 bg-muted/30"
                   >
-                    <div class="flex flex-col truncate pr-4">
-                      <span class="font-medium truncate">{model.name}</span>
-                      <span class="text-xs text-muted-foreground truncate"
-                        >{model.id}</span
+                    <Search class="w-4 h-4 text-muted-foreground" />
+                    <input
+                      bind:value={searchQuery}
+                      aria-label="Filter models"
+                      placeholder="Filter models..."
+                      class="w-full bg-transparent focus:outline-none text-sm py-1"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="overflow-y-auto flex-1 p-2">
+                    {#each filteredModels as model}
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={settings.model === model.id}
+                        onclick={() => selectModel(model.id)}
+                        class="w-full flex flex-col text-left px-3 py-2.5 rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors {settings.model ===
+                        model.id
+                          ? 'bg-accent/50'
+                          : ''}"
                       >
-                    </div>
-                    {#if settings.model === model.id}
-                      <Check class="w-4 h-4 shrink-0" />
-                    {/if}
-                  </button>
-                {/each}
-              </div>
+                        <span class="font-bold text-sm">{model.name}</span>
+                        <span class="text-[10px] opacity-60 font-mono truncate"
+                          >{model.id}</span
+                        >
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>
-      {/if}
-    </div>
 
-    <!-- Generation Parameters -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-      <div class="flex flex-col gap-2">
-        <div class="flex justify-between">
-          <label class="font-medium text-sm" for="temp">Temperature</label>
-          <span class="text-sm font-mono"
-            >{settings.temperature.toFixed(2)}</span
-          >
-        </div>
-        <input
-          id="temp"
-          type="range"
-          min="0"
-          max="2"
-          step="0.05"
-          bind:value={settings.temperature}
-          class="w-full cursor-pointer"
-        />
-        <p class="text-xs text-muted-foreground">
-          Higher values make output more random, lower values make it more
-          focused.
-        </p>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <div class="flex justify-between">
-          <label class="font-medium text-sm" for="freq"
-            >Repetition (Frequency) Penalty</label
-          >
-          <span class="text-sm font-mono"
-            >{settings.frequencyPenalty.toFixed(2)}</span
-          >
-        </div>
-        <input
-          id="freq"
-          type="range"
-          min="-2"
-          max="2"
-          step="0.05"
-          bind:value={settings.frequencyPenalty}
-          class="w-full cursor-pointer"
-        />
-      </div>
-    </div>
-
-    <!-- Collapsible Advanced Settings -->
-    <div class="border-t pt-4">
-      <button
-        type="button"
-        onclick={() => (advancedOpen = !advancedOpen)}
-        class="w-full flex items-center justify-between font-bold text-base text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-      >
-        <span>Advanced AI Parameters</span>
-        {#if advancedOpen}
-          <ChevronUp class="w-5 h-5" />
-        {:else}
-          <ChevronDown class="w-5 h-5" />
-        {/if}
-      </button>
-
-      {#if advancedOpen}
-        <div transition:slide class="space-y-6 pt-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="flex flex-col gap-2">
-              <div class="flex justify-between">
-                <label class="font-medium text-sm" for="topP">Top P</label>
-                <span class="text-sm font-mono">{settings.topP.toFixed(2)}</span
-                >
-              </div>
-              <input
-                id="topP"
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                bind:value={settings.topP}
-                class="w-full cursor-pointer"
-              />
-              <p class="text-xs text-muted-foreground">
-                Controls nucleus sampling. Lower values limit selection to
-                highly probable tokens.
-              </p>
-            </div>
-
-            <div class="flex flex-col gap-2">
-              <div class="flex justify-between">
-                <label class="font-medium text-sm" for="maxTokens"
-                  >Max Tokens</label
-                >
-                <span class="text-sm font-mono">{settings.maxTokens}</span>
-              </div>
-              <input
-                id="maxTokens"
-                type="number"
-                min="0"
-                max="8192"
-                step="64"
-                bind:value={settings.maxTokens}
-                class="border rounded-md px-3 py-1.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-              <p class="text-xs text-muted-foreground">
-                Sets maximum completion tokens generated.
-              </p>
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
+          <div class="space-y-4">
             <div class="flex justify-between">
-              <label class="font-medium text-sm" for="pres"
-                >Presence Penalty</label
-              >
+              <label class="font-bold text-sm" for="temp">Temperature</label>
               <span class="text-sm font-mono"
-                >{settings.presencePenalty.toFixed(2)}</span
+                >{settings.temperature.toFixed(2)}</span
               >
             </div>
             <input
-              id="pres"
+              id="temp"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              bind:value={settings.temperature}
+              class="w-full accent-blue-500 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex justify-between">
+              <label class="font-bold text-sm" for="freq"
+                >Frequency Penalty</label
+              >
+              <span class="text-sm font-mono"
+                >{settings.frequencyPenalty.toFixed(2)}</span
+              >
+            </div>
+            <input
+              id="freq"
               type="range"
               min="-2"
               max="2"
               step="0.05"
-              bind:value={settings.presencePenalty}
-              class="w-full cursor-pointer"
+              bind:value={settings.frequencyPenalty}
+              class="w-full accent-orange-500 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
             />
           </div>
         </div>
-      {/if}
+
+        <div class="bg-secondary/30 rounded-xl px-4 py-2">
+          <button
+            type="button"
+            aria-expanded={advancedOpen}
+            onclick={() => (advancedOpen = !advancedOpen)}
+            class="w-full flex items-center justify-between py-2 font-bold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span>ADVANCED ENGINE PARAMETERS</span>
+            {#if advancedOpen}
+              <ChevronUp class="w-4 h-4" />
+            {:else}
+              <ChevronDown class="w-4 h-4" />
+            {/if}
+          </button>
+
+          {#if advancedOpen}
+            <div transition:slide class="space-y-6 pb-4 pt-2">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="space-y-3">
+                  <div class="flex justify-between">
+                    <label class="font-bold text-xs" for="topP">Top P</label>
+                    <span class="text-xs font-mono"
+                      >{settings.topP.toFixed(2)}</span
+                    >
+                  </div>
+                  <input
+                    id="topP"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    bind:value={settings.topP}
+                    class="w-full accent-primary"
+                  />
+                </div>
+                <div class="space-y-3">
+                  <label class="font-bold text-xs" for="maxTokens"
+                    >Max Completion Tokens</label
+                  >
+                  <input
+                    id="maxTokens"
+                    type="number"
+                    bind:value={settings.maxTokens}
+                    class="w-full border rounded-lg px-3 py-2 bg-background text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div class="space-y-3">
+                <div class="flex justify-between">
+                  <label class="font-bold text-xs" for="pres"
+                    >Presence Penalty</label
+                  >
+                  <span class="text-xs font-mono"
+                    >{settings.presencePenalty.toFixed(2)}</span
+                  >
+                </div>
+                <input
+                  id="pres"
+                  type="range"
+                  min="-2"
+                  max="2"
+                  step="0.05"
+                  bind:value={settings.presencePenalty}
+                  class="w-full accent-primary"
+                />
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <div class="p-6 bg-muted/10 space-y-6">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-purple-500/10 text-purple-500 rounded-lg">
+            <Sparkles class="w-5 h-5" />
+          </div>
+          <h2 class="text-xl font-bold">Concept Generation</h2>
+        </div>
+
+        <div
+          class="grid grid-cols-1 sm:grid-cols-2 gap-3"
+          role="group"
+          aria-label="Prompt generation toggles"
+        >
+          {#each [{ key: "genName", label: "Name" }, { key: "genDescription", label: "Description" }, { key: "genPersonality", label: "Personality" }, { key: "genScenario", label: "Scenario" }, { key: "genBackstory", label: "Backstory" }, { key: "genFirstMessages", label: "Greetings" }, { key: "genExampleMessages", label: "Examples" }, { key: "genRelatedCharacters", label: "Relations" }] as toggle}
+            <button
+              role="switch"
+              aria-checked={(settings as any)[toggle.key]}
+              onclick={() =>
+                ((settings as any)[toggle.key] = !(settings as any)[
+                  toggle.key
+                ])}
+              class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm"
+            >
+              <span
+                class="text-sm font-bold group-hover:text-primary transition-colors"
+                >{toggle.label}</span
+              >
+              <div
+                class="w-10 h-6 rounded-full relative transition-colors {(
+                  settings as any
+                )[toggle.key]
+                  ? 'bg-blue-600'
+                  : 'bg-muted'}"
+              >
+                <div
+                  class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform {(
+                    settings as any
+                  )[toggle.key]
+                    ? 'translate-x-4'
+                    : 'translate-x-0'} shadow-sm"
+                ></div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
+</div>
 
-  <!-- Concept Field Generator Configuration -->
-  <div class="space-y-6 bg-card border rounded-xl p-6 shadow-sm">
-    <h2 class="text-xl font-bold border-b border-border pb-2">
-      Concept Generation Toggles
-    </h2>
-    <p class="text-sm text-muted-foreground">
-      Select which elements of the profile should be requested and overwritten
-      when clicking "Generate All Fields".
-    </p>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genName}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Character Name</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genDescription}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Description</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genPersonality}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Personality</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genScenario}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Scenario</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genBackstory}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Backstory</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genFirstMessages}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">First Messages</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genExampleMessages}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Example Messages</span>
-      </label>
-
-      <label
-        class="flex items-center gap-3 cursor-pointer p-3 border rounded-lg hover:bg-muted/30 transition-all select-none"
-      >
-        <input
-          type="checkbox"
-          bind:checked={settings.genRelatedCharacters}
-          class="accent-blue-600 rounded border-border"
-        />
-        <span class="text-sm font-medium">Related Characters</span>
-      </label>
+<div class="fixed bottom-8 right-8 z-50">
+  {#if saved}
+    <div
+      in:fade
+      out:fade
+      role="status"
+      class="absolute bottom-full right-0 mb-4 bg-emerald-500 text-white px-4 py-2 rounded-xl shadow-lg font-bold text-sm whitespace-nowrap"
+    >
+      Settings Saved!
     </div>
+  {/if}
 
-    <div class="pt-4 border-t border-border flex justify-end">
-      <button
-        onclick={saveSettings}
-        class="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2 rounded-md hover:opacity-90 transition-opacity font-medium cursor-pointer"
-      >
-        <Save class="w-4 h-4" />
-        {saved ? "Saved Successfully!" : "Save Settings"}
-      </button>
-    </div>
-  </div>
+  <button
+    onclick={saveSettings}
+    class="flex items-center gap-3 bg-primary text-primary-foreground px-6 py-4 rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all font-black text-base cursor-pointer group"
+  >
+    <Save class="w-6 h-6 group-hover:rotate-12 transition-transform" />
+    Save Settings
+  </button>
 </div>
