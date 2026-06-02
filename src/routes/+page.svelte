@@ -152,7 +152,13 @@
 
       const exampleMessages = parseExampleMessages(data.mes_example);
 
-      let mainPrompt = data.extensions?.char_creator?.main_prompt || "";
+      let mainPrompt =
+        parsed.extensions?.char_creator?.main_prompt ||
+        data.extensions?.char_creator?.main_prompt ||
+        parsed.extensions?.char_creator?.mainPrompt ||
+        data.extensions?.char_creator?.mainPrompt ||
+        "";
+
       if (!mainPrompt) {
         mainPrompt = description.substring(0, 150) || name;
       }

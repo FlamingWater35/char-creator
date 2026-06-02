@@ -360,6 +360,11 @@ ${JSON.stringify(schemaObj, null, 2)}`;
     const v3Data = {
       spec: "chara_card_v3",
       spec_version: "3.0",
+      extensions: {
+        char_creator: {
+          main_prompt: character.data.mainPrompt,
+        },
+      },
       data: {
         name: character.name,
         description: finalDesc,
