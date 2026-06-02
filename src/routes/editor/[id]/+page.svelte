@@ -26,6 +26,8 @@
   import { goto } from "$app/navigation";
 
   let characterId = $derived($page.params.id as string);
+  const aiSystemPrompt =
+    "You are an expert AI character creator and writer. You output ONLY the requested content, without conversational filler or markdown formatting blocks unless explicitly requested.";
 
   let character = $state<Character | null>(null);
   let loading = $state(true);
@@ -150,6 +152,12 @@
             if (character) character.data.image = dataUrl;
           }
         };
+        img.onerror = () => {
+          dialogs.alert(
+            "The selected file is not a valid image.",
+            "Image Error",
+          );
+        };
         img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
@@ -200,7 +208,17 @@
         }),
       });
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        dialogs.alert(
+          "Invalid response from API (might be a gateway error).",
+          "API Error",
+        );
+        return null;
+      }
+
       if (data.error) {
         dialogs.alert("API Error: " + data.error, "Generation Failed");
         return null;
@@ -233,7 +251,7 @@ ${currentContent || "(No content yet)"}
 
 Respond ONLY with the improved content. Do not include any meta-commentary, markdown formatting (unless it's just plain text paragraphs), or explanations. Keep the tone appropriate for character definitions.`;
 
-    const result = await callAI(prompt);
+    const result = await callAI(prompt, aiSystemPrompt);
     if (result) updateCb(result.trim());
 
     if (activeGeneratingField === fieldName) {
@@ -281,7 +299,7 @@ Respond ONLY with a valid JSON object matching this schema exactly. Output ONLY 
 
 ${JSON.stringify(schemaObj, null, 2)}`;
 
-    const result = await callAI(prompt);
+    const result = await callAI(prompt, aiSystemPrompt);
 
     if (result) {
       try {
@@ -482,6 +500,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
       const finalDataUrl = injectCharacterCardMetadata(
         imgData,
         JSON.stringify(v3Data),
+        JSON.stringify(v3Data.data),
       );
       const a = document.createElement("a");
       a.href = finalDataUrl;

@@ -124,7 +124,17 @@
         return;
       }
 
-      const parsed = JSON.parse(metadata);
+      let parsed;
+      try {
+        parsed = JSON.parse(metadata);
+      } catch (e) {
+        await dialogs.alert(
+          "Failed to parse card metadata JSON. The card might be corrupted.",
+          "Invalid Data",
+        );
+        return;
+      }
+
       const data = parsed.data || parsed;
 
       const name = data.name || "Imported Character";

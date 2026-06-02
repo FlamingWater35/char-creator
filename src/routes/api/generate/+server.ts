@@ -43,7 +43,10 @@ export const POST = async ({ request, url }: RequestEvent) => {
       max_tokens: maxTokens ?? 8192
     }, { signal: request.signal });
 
-    return json({ result: completion.choices[0].message.content });
+    let content = completion.choices[0].message.content || "";
+    content = content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+
+    return json({ result: content });
   } catch (error: any) {
     if (error.name === 'AbortError') {
       return new Response(null, { status: 499 });

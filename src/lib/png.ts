@@ -50,7 +50,7 @@ function createTextChunk(keyword: string, dataB64: string): Uint8Array {
   return chunk;
 }
 
-export function injectCharacterCardMetadata(base64Image: string, jsonString: string): string {
+export function injectCharacterCardMetadata(base64Image: string, v3JsonString: string, v2JsonString: string): string {
   const b64DataPart = base64Image.split(',')[1];
   if (!b64DataPart) throw new Error("Invalid base64 image data");
 
@@ -63,12 +63,12 @@ export function injectCharacterCardMetadata(base64Image: string, jsonString: str
 
   // UTF-8 base64 encoding guarantees robust Unicode compatibility!
   const utf8Encoder = new TextEncoder();
-  const jsonUtf8 = utf8Encoder.encode(jsonString);
-  const base64Data = uint8ToBase64(jsonUtf8);
+  const v3Data = uint8ToBase64(utf8Encoder.encode(v3JsonString));
+  const v2Data = uint8ToBase64(utf8Encoder.encode(v2JsonString));
 
   // For maximum compatibility, inject both V2 and V3 spec tags
-  const v3Chunk = createTextChunk('ccv3', base64Data);
-  const v2Chunk = createTextChunk('chara', base64Data);
+  const v3Chunk = createTextChunk('ccv3', v3Data);
+  const v2Chunk = createTextChunk('chara', v2Data);
 
   // Locate the start of the IEND chunk (usually at the very end of file)
   let iendPos = bytes.length - 12;
@@ -121,14 +121,19 @@ export function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): string |
       if (nullPos !== -1) {
         const keyword = decoder.decode(chunkData.subarray(0, nullPos));
         if (keyword === 'ccv3' || keyword === 'chara') {
-          const base64Data = decoder.decode(chunkData.subarray(nullPos + 1));
-          const binaryString = atob(base64Data.trim());
-          const len = binaryString.length;
-          const jsonBytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            jsonBytes[i] = binaryString.charCodeAt(i);
+          try {
+            const base64Data = decoder.decode(chunkData.subarray(nullPos + 1));
+            const binaryString = atob(base64Data.trim());
+            const len = binaryString.length;
+            const jsonBytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              jsonBytes[i] = binaryString.charCodeAt(i);
+            }
+            return decoder.decode(jsonBytes);
+          } catch (e) {
+            console.error("Failed to decode chunk data:", e);
+            // Will fall through and search for alternative fallback chunks
           }
-          return decoder.decode(jsonBytes);
         }
       }
     }
