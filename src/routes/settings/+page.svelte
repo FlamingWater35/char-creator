@@ -18,7 +18,7 @@
     FileUp,
     Trash2,
     RotateCcw,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { setMode, resetMode } from "mode-watcher";
   import { slide } from "svelte/transition";
 

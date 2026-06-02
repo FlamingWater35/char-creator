@@ -3,7 +3,7 @@
   import { db, type Character, type ExampleMessage } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
   import { goto } from "$app/navigation";
-  import { Plus, Trash2, Edit, Loader2, FileUp } from "lucide-svelte";
+  import { Plus, Trash2, Edit, Loader2, FileUp } from "@lucide/svelte";
   import { fade } from "svelte/transition";
   import { extractCharacterCardMetadata } from "$lib/png";
 

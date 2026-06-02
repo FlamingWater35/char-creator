@@ -22,7 +22,7 @@
     X,
     ImagePlus,
     Download,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
   let characterId = $derived($page.params.id as string);

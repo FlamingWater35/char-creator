@@ -5,7 +5,7 @@
   import GlobalDialogs from "$lib/components/GlobalDialogs.svelte";
   import { page } from "$app/stores";
   import { fade } from "svelte/transition";
-  import { Home, Settings as SettingsIcon } from "lucide-svelte";
+  import { Home, Settings as SettingsIcon } from "@lucide/svelte";
 
   import { version } from "../../package.json";
 
