@@ -824,7 +824,7 @@ ${JSON.stringify(schemaObj, null, 2)}`;
             use:autoresize={character.data.mainPrompt}
             bind:value={character.data.mainPrompt}
             class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
-            placeholder="e.g. A 20 years old female student who values friendship above everything else..."
+            placeholder="e.g. Merlin is an ancient wizard with a long silver beard and flowing blue robes who teaches magical arts in his forest tower..."
             disabled={generatingAll || activeGeneratingField !== null}
           ></textarea>
         </div>

@@ -80,7 +80,7 @@
             use:autoresize={ex.user}
             bind:value={ex.user}
             class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15 disabled:opacity-50"
-            placeholder="e.g. *I walk into the tavern and wave*"
+            placeholder="e.g. Can you teach me magic, Merlin?"
             disabled={generatingAll ||
               activeGeneratingField === `Example Message ${i}`}
           ></textarea>
@@ -119,7 +119,7 @@
             use:autoresize={ex.character}
             bind:value={ex.character}
             class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25 disabled:opacity-50"
-            placeholder="e.g. *glances up from his ale* 'What do you want?'"
+            placeholder="e.g. *Merlin chuckles softly, stroking his white beard.* 'Patience, young seeker. Magic requires deliberate study and quiet meditation.'"
             disabled={generatingAll ||
               activeGeneratingField === `Example Message ${i}`}
           ></textarea>

@@ -103,7 +103,7 @@
             bind:value={asset.name}
             disabled={generatingAll || activeGeneratingField !== null}
             class="w-full bg-background text-xs font-mono border rounded-md px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-            placeholder="e.g. workshop_scene"
+            placeholder="e.g. merlin_workshop_scene"
           />
         </div>
       </div>

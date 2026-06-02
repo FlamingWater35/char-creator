@@ -424,7 +424,7 @@
     >
       <!-- AI Configuration -->
       <div class="p-6 space-y-6">
-        <div class="flex items-center gap-3 mb-2">
+        <div class="flex items-center gap-3 mb-5">
           <div class="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
             <Cpu class="w-5 h-5" />
           </div>
@@ -432,7 +432,7 @@
         </div>
 
         <!-- Provider Switcher -->
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-3 pt-2">
           <label class="font-bold text-sm" for="provider">API Provider</label>
           <select
             id="provider"

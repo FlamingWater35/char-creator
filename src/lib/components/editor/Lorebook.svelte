@@ -108,7 +108,7 @@
       bind:value={worldInfo}
       disabled={generatingAll || activeGeneratingField !== null}
       class="w-full border rounded-xl px-4 py-2.5 bg-background text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-      placeholder="e.g. My_World_Lore_File"
+      placeholder="e.g. Camelot_Forest_Lore"
     />
   </div>
 
@@ -140,7 +140,7 @@
         bind:value={characterBook.description}
         disabled={generatingAll || activeGeneratingField !== null}
         class="w-full border rounded-xl px-4 py-2.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-        placeholder="e.g. Knowledge base of spells and creatures"
+        placeholder="e.g. Merlin's collection of ancient Camelot spells, incantations, and potion recipes"
       />
     </div>
   </div>
@@ -255,7 +255,7 @@
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. library, ancient books, spell workshop"
+                placeholder="e.g. Fireball, spell casting, magic incantation"
               />
             </div>
             <div class="space-y-1">
@@ -276,7 +276,7 @@
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. shadows, magic"
+                placeholder="e.g. wand, spellbook"
               />
             </div>
           </div>
@@ -293,7 +293,7 @@
               bind:value={entry.content}
               disabled={generatingAll || activeGeneratingField !== null}
               class="w-full border rounded-lg p-3 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
-              placeholder="e.g. The Library of Shadows houses cursed magical tomes forbidden to apprentices..."
+              placeholder="e.g. Fireball is an evocation spell conjuring a sphere of flame. Merlin teaches this to advanced seekers after they master basic fire safety."
             ></textarea>
           </div>
 
@@ -310,7 +310,7 @@
                 bind:value={entry.comment}
                 disabled={generatingAll || activeGeneratingField !== null}
                 class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
-                placeholder="e.g. Background for Merlin's magical academy"
+                placeholder="e.g. Lesson prerequisites for Merlin's fire evocation tutorial"
               />
             </div>
             <div class="space-y-1">
