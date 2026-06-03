@@ -22,7 +22,9 @@
     oncancel: () => void;
   } = $props();
 
-  // Appends a blank interactive dialogue trigger card
+  /**
+   * Appends a blank interactive dialogue trigger card.
+   */
   function addExampleMessage() {
     exampleMessages = [
       ...exampleMessages,
@@ -30,15 +32,18 @@
     ];
   }
 
-  // Wipes an individual dialogue record from the list
+  /**
+   * Wipes an individual dialogue record from the list.
+   */
   function removeExampleMessage(id: string) {
     exampleMessages = exampleMessages.filter((m) => m.id !== id);
   }
 </script>
 
-<!-- Examples Manager Card -->
 <div class="space-y-4 pt-4">
-  <div class="flex justify-between items-center border-b border-border pb-2">
+  <div
+    class="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-border pb-2"
+  >
     <div>
       <h3 class="text-2xl font-bold">Example Messages</h3>
       <p class="text-sm text-muted-foreground">
@@ -48,7 +53,7 @@
     <button
       onclick={addExampleMessage}
       disabled={generatingAll || activeGeneratingField !== null}
-      class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-2 sm:py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-11 sm:min-h-0"
     >
       <Plus class="w-4 h-4" /> Add
     </button>
@@ -70,7 +75,7 @@
         <button
           onclick={() => removeExampleMessage(ex.id)}
           disabled={generatingAll || activeGeneratingField !== null}
-          class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50"
+          class="absolute top-3 right-3 p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-50 min-h-9 min-w-9 flex items-center justify-center"
           aria-label="Remove Dialogue Example"
         >
           <Trash2 class="w-4 h-4" />
@@ -86,7 +91,7 @@
             id="ex-user-{i}"
             use:autoresize={ex.user}
             bind:value={ex.user}
-            class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-15 disabled:opacity-50"
+            class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-sm resize-none min-h-15 disabled:opacity-50"
             placeholder="e.g. Can you teach me magic, Merlin?"
             disabled={generatingAll ||
               activeGeneratingField === `Example Message ${i}`}
@@ -103,7 +108,7 @@
             {#if activeGeneratingField === `Example Message ${i}`}
               <button
                 onclick={oncancel}
-                class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer"
+                class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer min-h-9"
                 ><X class="w-3.5 h-3.5" /> Cancel</button
               >
             {:else}
@@ -117,7 +122,7 @@
                 disabled={generatingAll ||
                   (activeGeneratingField !== null &&
                     activeGeneratingField !== `Example Message ${i}`)}
-                class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
                 ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
               >
             {/if}
@@ -126,8 +131,8 @@
             id="ex-char-{i}"
             use:autoresize={ex.character}
             bind:value={ex.character}
-            class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none min-h-25 disabled:opacity-50"
-            placeholder="e.g. *Merlin chuckles softly, stroking his white beard.* 'Patience, young seeker. Magic requires deliberate study and quiet meditation.'"
+            class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-sm resize-none min-h-25 disabled:opacity-50"
+            placeholder="e.g. *Merlin chuckles softly...*"
             disabled={generatingAll ||
               activeGeneratingField === `Example Message ${i}`}
           ></textarea>

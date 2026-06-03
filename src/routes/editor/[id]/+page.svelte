@@ -674,11 +674,11 @@
   {:else if character}
     <div
       in:fade={{ duration: 200, delay: 150 }}
-      class="max-w-4xl mx-auto pb-24 w-full relative"
+      class="max-w-4xl mx-auto pb-24 w-full relative px-1 sm:px-0"
     >
       <a
         href="/"
-        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors {generatingAll ||
+        class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors min-h-11 {generatingAll ||
         activeGeneratingField !== null
           ? 'pointer-events-none opacity-50 cursor-not-allowed'
           : ''}"
@@ -690,10 +690,10 @@
       <div
         class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6"
       >
-        <div class="flex items-center gap-4 flex-1">
-          <!-- Avatar Upload -->
+        <div class="flex flex-col xs:flex-row items-center gap-4 flex-1 w-full">
+          <!-- Avatar Upload button -->
           <button
-            class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            class="relative group w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden bg-secondary border border-border hover:border-primary transition-colors flex shrink-0 items-center justify-center cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed min-h-20 min-w-20"
             onclick={() => fileInput?.click()}
             aria-label="Upload character image"
             disabled={generatingAll || activeGeneratingField !== null}
@@ -727,20 +727,20 @@
             type="text"
             bind:value={character.name}
             aria-label="Character Name"
-            class="text-3xl sm:text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1 px-0 flex-1 w-full min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="text-2xl sm:text-4xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none py-1.5 px-0 flex-1 w-full text-center xs:text-left min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="Character Name"
             disabled={generatingAll || activeGeneratingField !== null}
           />
         </div>
 
         <div
-          class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2"
+          class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto"
         >
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 w-full sm:w-auto">
             <button
               onclick={copyToClipboard}
               disabled={generatingAll || activeGeneratingField !== null}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 border transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
             >
               {#if copied}
                 <Check class="w-4 h-4" /> Copied!
@@ -751,7 +751,7 @@
             <button
               onclick={downloadCardPNG}
               disabled={generatingAll || activeGeneratingField !== null}
-              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
             >
               <Download class="w-4 h-4" /> PNG Card
             </button>
@@ -780,7 +780,7 @@
             {#if generatingAll}
               <button
                 onclick={cancelGeneration}
-                class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-2.5 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer"
+                class="flex items-center justify-center gap-2 bg-destructive text-white px-5 py-3 rounded-md hover:bg-destructive/90 font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer min-h-11"
               >
                 <Loader2 class="w-4 h-4 animate-spin" /> Cancel Generation
               </button>
@@ -789,7 +789,7 @@
                 onclick={generateAll}
                 disabled={!character.data.mainPrompt ||
                   activeGeneratingField !== null}
-                class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer"
+                class="flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-sm transition-colors whitespace-nowrap cursor-pointer min-h-11"
               >
                 <Sparkles class="w-4 h-4" /> Generate All Fields
               </button>
@@ -799,7 +799,7 @@
             id="main-prompt"
             use:autoresize={character.data.mainPrompt}
             bind:value={character.data.mainPrompt}
-            class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="w-full border rounded-md p-4 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-lg resize-none min-h-25 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="e.g. Merlin is an ancient wizard with a long silver beard and flowing blue robes who teaches magical arts in his forest tower..."
             disabled={generatingAll || activeGeneratingField !== null}
           ></textarea>
@@ -842,7 +842,7 @@
               use:autoresize={character.data.description}
               bind:value={character.data.description}
               aria-label="Description"
-              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-sm"
               disabled={generatingAll ||
                 activeGeneratingField === "Description"}
             ></textarea>
@@ -891,31 +891,42 @@
         />
       </div>
 
-      <div class="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+      <!-- Realtime Token and Database Status Indicators -->
+      <div
+        class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-3 pointer-events-none"
+      >
         <div
-          class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+          class="bg-card/95 backdrop-blur-md border px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-full shadow-lg flex items-center gap-2 text-[10px] sm:text-xs font-semibold text-muted-foreground pointer-events-auto select-none"
           aria-label="Context token estimate"
         >
-          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          <span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500"
+          ></span>
           <span>~{estimatedTokens} Tokens</span>
         </div>
 
         <div
-          class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+          class="bg-card/95 backdrop-blur-md border px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-full shadow-lg flex items-center gap-2 text-[10px] sm:text-xs font-semibold text-muted-foreground pointer-events-auto select-none"
           role="status"
         >
           {#if saveState === "waiting"}
-            <span>Unsaved changes...</span>
+            <span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-yellow-500"
+            ></span>
+            <span>Unsaved</span>
           {:else if saveState === "saving"}
-            <Loader2 class="w-3 h-3 animate-spin" /> Saving...
+            <Loader2
+              class="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-spin text-blue-500"
+            />
+            <span>Saving</span>
           {:else if saveState === "error"}
             <div
-              class="w-2 h-2 rounded-full bg-destructive animate-pulse"
+              class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-destructive animate-pulse"
             ></div>
-            <span class="text-destructive font-bold">Failed to save!</span>
+            <span class="text-destructive font-bold">Error</span>
           {:else}
-            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
-            <span>Auto-Saved</span>
+            <div
+              class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500"
+            ></div>
+            <span>Saved</span>
           {/if}
         </div>
       </div>

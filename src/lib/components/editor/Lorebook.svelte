@@ -101,7 +101,7 @@
     <button
       onclick={addLorebookEntry}
       disabled={generatingAll || activeGeneratingField !== null}
-      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border hover:bg-secondary/80 font-bold px-4 py-2 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border hover:bg-secondary/80 font-bold px-4 py-3 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50 min-h-11 sm:min-h-0"
     >
       <Plus class="w-4 h-4" /> Add Memory Entry
     </button>
@@ -126,7 +126,7 @@
       type="text"
       bind:value={worldInfo}
       disabled={generatingAll || activeGeneratingField !== null}
-      class="w-full border rounded-xl px-4 py-2.5 bg-background text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
+      class="w-full border rounded-xl px-4 py-2.5 bg-background text-base sm:text-xs font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
       placeholder="e.g. Camelot_Forest_Lore"
     />
   </div>
@@ -145,7 +145,7 @@
         type="text"
         bind:value={characterBook.name}
         disabled={generatingAll || activeGeneratingField !== null}
-        class="w-full border rounded-xl px-4 py-2.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
+        class="w-full border rounded-xl px-4 py-2.5 bg-background text-base sm:text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
         placeholder="e.g. Merlin's Grimoire"
       />
     </div>
@@ -160,7 +160,7 @@
         type="text"
         bind:value={characterBook.description}
         disabled={generatingAll || activeGeneratingField !== null}
-        class="w-full border rounded-xl px-4 py-2.5 bg-background text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
+        class="w-full border rounded-xl px-4 py-2.5 bg-background text-base sm:text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
         placeholder="e.g. Merlin's collection of ancient Camelot spells"
       />
     </div>
@@ -168,18 +168,18 @@
 
   {#if characterBook.entries.length > 0}
     <div
-      class="relative h-10 flex items-center bg-secondary/10 border rounded-xl px-3 focus-within:ring-2 focus-within:ring-blue-500"
+      class="relative h-12 flex items-center bg-secondary/10 border rounded-xl px-3 focus-within:ring-2 focus-within:ring-blue-500"
     >
       <input
         type="text"
         bind:value={lorebookSearchQuery}
         placeholder="Search active triggers, comments or entry content..."
-        class="w-full h-full text-xs bg-transparent focus:outline-none text-foreground"
+        class="w-full h-full text-base sm:text-xs bg-transparent focus:outline-none text-foreground"
       />
       {#if lorebookSearchQuery}
         <button
           onclick={() => (lorebookSearchQuery = "")}
-          class="p-1 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+          class="p-1.5 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer min-h-9"
         >
           <X class="w-3.5 h-3.5" />
         </button>
@@ -266,7 +266,7 @@
                   removeLorebookEntry(entry.id);
                 }}
                 disabled={generatingAll || activeGeneratingField !== null}
-                class="sm:opacity-0 group-hover:opacity-100 p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-all cursor-pointer"
+                class="sm:opacity-0 group-hover:opacity-100 p-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 rounded-md transition-all cursor-pointer min-h-9"
                 aria-label="Remove Lore Entry"
               >
                 <Trash2 class="w-4 h-4" />
@@ -290,7 +290,7 @@
                 <button
                   onclick={() => (entry.enabled = !entry.enabled)}
                   disabled={generatingAll || activeGeneratingField !== null}
-                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.enabled
+                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer min-h-9 {entry.enabled
                     ? 'text-blue-500'
                     : 'text-muted-foreground'}"
                 >
@@ -304,7 +304,7 @@
                 <button
                   onclick={() => (entry.constant = !entry.constant)}
                   disabled={generatingAll || activeGeneratingField !== null}
-                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer {entry.constant
+                  class="flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer min-h-9 {entry.constant
                     ? 'text-purple-500'
                     : 'text-muted-foreground'}"
                 >
@@ -334,7 +334,7 @@
                         .filter(Boolean);
                     }}
                     disabled={generatingAll || activeGeneratingField !== null}
-                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
                     placeholder="e.g. Fireball, spell casting"
                   />
                 </div>
@@ -355,7 +355,7 @@
                         .filter(Boolean);
                     }}
                     disabled={generatingAll || activeGeneratingField !== null}
-                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
                     placeholder="e.g. wand, spellbook"
                   />
                 </div>
@@ -372,7 +372,7 @@
                   use:autoresize={entry.content}
                   bind:value={entry.content}
                   disabled={generatingAll || activeGeneratingField !== null}
-                  class="w-full border rounded-lg p-3 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
+                  class="w-full border rounded-lg p-3 bg-background text-base sm:text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none min-h-16 disabled:opacity-50"
                   placeholder="e.g. Fireball is an evocation spell conjuring a sphere of flame. Merlin teaches this to advanced seekers..."
                 ></textarea>
               </div>
@@ -389,7 +389,7 @@
                     type="text"
                     bind:value={entry.comment}
                     disabled={generatingAll || activeGeneratingField !== null}
-                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
                     placeholder="e.g. Background for Merlin's magical academy"
                   />
                 </div>
@@ -404,7 +404,7 @@
                     type="number"
                     bind:value={entry.priority}
                     disabled={generatingAll || activeGeneratingField !== null}
-                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
+                    class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
                     placeholder="e.g. 10 (higher numbers activate first)"
                   />
                 </div>

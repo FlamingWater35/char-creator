@@ -28,7 +28,6 @@
   } = $props();
 </script>
 
-<!-- Optional Metadata Subfields Block Container -->
 <div class="space-y-6 pt-10 border-t border-border">
   <h3
     class="text-xl font-bold text-muted-foreground uppercase tracking-wider mb-4 animate-fade-in"
@@ -45,7 +44,7 @@
       {#if activeGeneratingField === "Personality"}
         <button
           onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
+          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
           ><X class="w-4 h-4" /> Cancel</button
         >
       {:else}
@@ -55,7 +54,7 @@
           disabled={generatingAll ||
             (activeGeneratingField !== null &&
               activeGeneratingField !== "Personality")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
           ><Sparkles class="w-4 h-4" /> Enhance</button
         >
       {/if}
@@ -64,7 +63,7 @@
       id="sub-personality"
       use:autoresize={personality}
       bind:value={personality}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50"
+      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 text-base sm:text-sm"
       placeholder="e.g. Wise, patient, speaks in deliberate medieval riddles..."
       disabled={generatingAll || activeGeneratingField === "Personality"}
     ></textarea>
@@ -77,7 +76,7 @@
       {#if activeGeneratingField === "Scenario"}
         <button
           onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
+          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
           ><X class="w-4 h-4" /> Cancel</button
         >
       {:else}
@@ -86,7 +85,7 @@
           disabled={generatingAll ||
             (activeGeneratingField !== null &&
               activeGeneratingField !== "Scenario")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
           ><Sparkles class="w-4 h-4" /> Enhance</button
         >
       {/if}
@@ -95,8 +94,8 @@
       id="sub-scenario"
       use:autoresize={scenario}
       bind:value={scenario}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50"
-      placeholder="e.g. The user discovers Merlin's ancient stone tower deep in the dark forests of Camelot..."
+      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 text-base sm:text-sm"
+      placeholder="e.g. The user discovers Merlin's ancient stone tower..."
       disabled={generatingAll || activeGeneratingField === "Scenario"}
     ></textarea>
   </div>
@@ -108,7 +107,7 @@
       {#if activeGeneratingField === "Backstory"}
         <button
           onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
+          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
           ><X class="w-4 h-4" /> Cancel</button
         >
       {:else}
@@ -118,7 +117,7 @@
           disabled={generatingAll ||
             (activeGeneratingField !== null &&
               activeGeneratingField !== "Backstory")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
           ><Sparkles class="w-4 h-4" /> Enhance</button
         >
       {/if}
@@ -127,8 +126,8 @@
       id="sub-backstory"
       use:autoresize={backstory}
       bind:value={backstory}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50"
-      placeholder="e.g. Born of a mortal mother and an incubus, Merlin holds immense magical lineage..."
+      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 text-base sm:text-sm"
+      placeholder="e.g. Born of a mortal mother and an incubus..."
       disabled={generatingAll || activeGeneratingField === "Backstory"}
     ></textarea>
   </div>
@@ -142,7 +141,7 @@
       {#if activeGeneratingField === "Related Characters"}
         <button
           onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
+          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
           ><X class="w-4 h-4" /> Cancel</button
         >
       {:else}
@@ -156,7 +155,7 @@
           disabled={generatingAll ||
             (activeGeneratingField !== null &&
               activeGeneratingField !== "Related Characters")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
           ><Sparkles class="w-4 h-4" /> Enhance</button
         >
       {/if}
@@ -165,7 +164,7 @@
       id="sub-relatedCharacters"
       use:autoresize={relatedCharacters}
       bind:value={relatedCharacters}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50"
+      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 text-base sm:text-sm"
       placeholder="e.g. King Arthur (Mentee / Sovereign), Nimue (Lady of the Lake / Companion)..."
       disabled={generatingAll || activeGeneratingField === "Related Characters"}
     ></textarea>

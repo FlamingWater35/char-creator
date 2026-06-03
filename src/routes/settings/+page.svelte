@@ -435,7 +435,7 @@
                 updateTheme();
               }}
               aria-pressed={themePreference === mode}
-              class="px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer {themePreference ===
+              class="px-4 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer {themePreference ===
               mode
                 ? 'bg-background shadow-sm text-foreground'
                 : 'text-muted-foreground hover:text-foreground'}"
@@ -472,7 +472,7 @@
             id="provider"
             bind:value={settings.provider}
             onchange={handleProviderChange}
-            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all"
+            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all text-base sm:text-sm"
           >
             <option value="openrouter">OpenRouter (Default)</option>
             <option value="openai">OpenAI</option>
@@ -494,7 +494,7 @@
               type="text"
               id="customBaseUrl"
               bind:value={settings.customBaseUrl}
-              class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all"
+              class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all text-base sm:text-sm"
               placeholder="e.g. http://localhost:11434/v1"
             />
             <p class="text-xs text-muted-foreground">
@@ -512,7 +512,7 @@
               type={showApiKey ? "text" : "password"}
               id="apiKey"
               bind:value={settings.apiKey}
-              class="border rounded-xl pl-4 pr-12 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all"
+              class="border rounded-xl pl-4 pr-12 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full transition-all text-base sm:text-sm"
               placeholder={settings.provider === "custom"
                 ? "Optional key"
                 : "sk-..."}
@@ -561,7 +561,7 @@
                 aria-expanded={dropdownOpen}
                 disabled={models.length === 0 && !settings.model}
                 onclick={() => (dropdownOpen = !dropdownOpen)}
-                class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                class="w-full flex items-center justify-between border rounded-xl px-4 py-3 bg-background hover:bg-muted/50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-sm"
               >
                 <span class="truncate font-medium">{selectedModelName}</span>
                 <ChevronDown class="w-4 h-4 opacity-50 shrink-0" />
@@ -586,7 +586,7 @@
                       bind:value={searchQuery}
                       aria-label="Filter models"
                       placeholder="Filter models..."
-                      class="w-full bg-transparent focus:outline-none text-sm py-1"
+                      class="w-full bg-transparent focus:outline-none text-base sm:text-sm py-1"
                       autocomplete="off"
                     />
                   </div>
@@ -630,7 +630,7 @@
               max="2"
               step="0.05"
               bind:value={settings.temperature}
-              class="w-full accent-blue-500 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+              class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-blue-500 my-4"
             />
           </div>
 
@@ -650,7 +650,7 @@
               max="2"
               step="0.05"
               bind:value={settings.frequencyPenalty}
-              class="w-full accent-orange-500 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+              class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-orange-500 my-4"
             />
           </div>
         </div>
@@ -660,7 +660,7 @@
             type="button"
             aria-expanded={advancedOpen}
             onclick={() => (advancedOpen = !advancedOpen)}
-            class="w-full flex items-center justify-between py-2 font-bold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            class="w-full flex items-center justify-between py-3 font-bold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             <span>ADVANCED ENGINE PARAMETERS</span>
             {#if advancedOpen}
@@ -687,7 +687,7 @@
                     max="1"
                     step="0.05"
                     bind:value={settings.topP}
-                    class="w-full accent-primary"
+                    class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary my-4"
                   />
                 </div>
                 <div class="space-y-3">
@@ -698,7 +698,7 @@
                     id="maxTokens"
                     type="number"
                     bind:value={settings.maxTokens}
-                    class="w-full border rounded-lg px-3 py-2 bg-background text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    class="w-full border rounded-lg px-3 py-2.5 bg-background text-base sm:text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -718,7 +718,7 @@
                   max="2"
                   step="0.05"
                   bind:value={settings.presencePenalty}
-                  class="w-full accent-primary"
+                  class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary my-4"
                 />
               </div>
 
@@ -731,7 +731,7 @@
                   <button
                     type="button"
                     onclick={() => settings.resetSystemPrompt()}
-                    class="text-[10px] text-blue-500 hover:text-blue-600 font-bold transition-colors cursor-pointer"
+                    class="text-[10px] text-blue-500 hover:text-blue-600 font-bold transition-colors cursor-pointer p-1"
                   >
                     Reset Prompt
                   </button>
@@ -739,8 +739,7 @@
                 <textarea
                   id="systemPrompt"
                   bind:value={settings.systemPrompt}
-                  rows="6"
-                  class="w-full border rounded-xl px-3 py-2.5 bg-background text-xs font-sans focus:ring-2 focus:ring-blue-500 focus:outline-none resize-y min-h-24"
+                  class="w-full border rounded-xl px-4 py-3 bg-background text-base sm:text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none resize-y min-h-95 leading-relaxed"
                   placeholder="System prompt instructions..."
                 ></textarea>
               </div>
@@ -770,7 +769,7 @@
                 ((settings as any)[toggle.key] = !(settings as any)[
                   toggle.key
                 ])}
-              class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm"
+              class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm min-h-14"
             >
               <span
                 class="text-sm font-bold group-hover:text-primary transition-colors"
@@ -813,7 +812,7 @@
           <select
             id="exportVersion"
             bind:value={settings.exportVersion}
-            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all text-sm"
+            class="border rounded-xl px-4 py-3 bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 w-full cursor-pointer transition-all text-base sm:text-sm"
           >
             <option value="v3">SillyTavern V3 (Standard / Recommended)</option>
             <option value="v2">SillyTavern V2 (Legacy Compatibility)</option>
@@ -829,7 +828,7 @@
           aria-checked={settings.mergeTraitsOnExport}
           onclick={() =>
             (settings.mergeTraitsOnExport = !settings.mergeTraitsOnExport)}
-          class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm w-full"
+          class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm w-full min-h-18"
         >
           <div class="space-y-1 pr-4">
             <span
@@ -866,25 +865,25 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             onclick={exportDatabase}
-            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer min-h-12"
           >
             <FileDown class="w-4 h-4 text-blue-500" /> Export Database JSON
           </button>
           <button
             onclick={() => fileInputImportDB?.click()}
-            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer min-h-12"
           >
             <FileUp class="w-4 h-4 text-purple-500" /> Import Database JSON
           </button>
           <button
             onclick={handleResetSettings}
-            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+            class="flex items-center justify-center gap-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer min-h-12"
           >
             <RotateCcw class="w-4 h-4 text-yellow-500" /> Reset Settings Defaults
           </button>
           <button
             onclick={handleDeleteAll}
-            class="flex items-center justify-center gap-2 border border-transparent bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer animate-pulse"
+            class="flex items-center justify-center gap-2 border border-transparent bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer animate-pulse min-h-12"
           >
             <Trash2 class="w-4 h-4" /> Wipe Character Database
           </button>
