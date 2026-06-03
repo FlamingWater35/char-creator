@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CharacterAsset } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
+  import { compressImage } from "$lib/png";
   import { Trash2, ImagePlus } from "@lucide/svelte";
 
   // Binds external media arrays to the editor's parent state
@@ -16,62 +17,61 @@
     activeGeneratingField: string | null;
   } = $props();
 
-  // Reference to the hidden file input element for triggering uploads
   let fileInputAsset = $state<HTMLInputElement>();
 
-  // Reads the selected local file, converts it to a base64 string, and injects it into the DB state
+  /**
+   * Reads, compresses (WebP), and converts the selected file into base64.
+   * Compressing supplementary assets significantly improves application performance.
+   */
   async function handleAssetUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
     try {
-      const reader = new FileReader();
+      // Compresses to max 1920x1080 as a space-saving webp
+      const compressedUri = await compressImage(file, {
+        maxWidth: 1920,
+        maxHeight: 1080,
+        type: "image/webp",
+        quality: 0.85,
+      });
 
-      reader.onload = (event) => {
-        const uri = event.target?.result as string;
-        const ext = file.name.split(".").pop() || "png";
-        const name = file.name
-          .split(".")[0]
-          .replace(/[^a-zA-Z0-9_]/g, "_")
-          .toLowerCase();
+      const ext = "webp"; // We normalized it during compression
+      const name = file.name
+        .split(".")[0]
+        .replace(/[^a-zA-Z0-9_]/g, "_")
+        .toLowerCase();
 
-        assets = [
-          ...assets,
-          {
-            id: crypto.randomUUID(),
-            characterId,
-            name,
-            type: "image",
-            uri,
-            ext,
-          },
-        ];
-      };
-
-      // Ensure broken files or blocked I/O don't hang the application silently
-      reader.onerror = () => {
-        throw new Error("Local file read interrupted or corrupted.");
-      };
-
-      reader.readAsDataURL(file);
+      assets = [
+        ...assets,
+        {
+          id: crypto.randomUUID(),
+          characterId,
+          name,
+          type: "image",
+          uri: compressedUri,
+          ext,
+        },
+      ];
     } catch (error: any) {
       console.error("Asset upload error:", error);
       dialogs.alert(
-        error.message || "Failed to process asset upload.",
-        "Error",
+        error.message || "Failed to process and compress asset upload.",
+        "Upload Error",
       );
     } finally {
       if (fileInputAsset) fileInputAsset.value = "";
     }
   }
 
-  // Purges a specific asset from the reactive array based on ID
+  /**
+   * Purges a specific asset from the reactive array based on ID.
+   */
   function removeAsset(id: string) {
     assets = assets.filter((a) => a.id !== id);
   }
 </script>
 
-<!-- Multimedia Dashboard Container -->
 <div class="bg-card border rounded-2xl p-4 sm:p-6 shadow-sm space-y-5">
   <div>
     <h3 class="text-2xl font-black">Multimedia Assets</h3>
@@ -81,7 +81,6 @@
     </p>
   </div>
 
-  <!-- Responsive Asset Grid -->
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
     {#each assets as asset, i (asset.id)}
       <div
@@ -96,7 +95,6 @@
           <Trash2 class="w-4 h-4" />
         </button>
 
-        <!-- Preview Viewport -->
         <div
           class="w-full h-32 rounded-lg overflow-hidden bg-background border flex items-center justify-center shadow-inner"
         >
@@ -107,11 +105,10 @@
               class="w-full h-full object-cover"
             />
           {:else}
-            <span class="text-3xl">🔊</span>
+            <span class="text-3xl" aria-hidden="true">🔊</span>
           {/if}
         </div>
 
-        <!-- Asset Naming Metadata -->
         <div class="space-y-1">
           <label
             for="asset-name-{i}"
@@ -124,13 +121,12 @@
             bind:value={asset.name}
             disabled={generatingAll || activeGeneratingField !== null}
             class="w-full bg-background text-xs font-mono border rounded-md px-2 py-1.5 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-all disabled:opacity-50"
-            placeholder="e.g. merlin_workshop_scene"
+            placeholder="e.g. scene_background"
           />
         </div>
       </div>
     {/each}
 
-    <!-- Upload trigger cell -->
     <button
       onclick={() => fileInputAsset?.click()}
       disabled={generatingAll || activeGeneratingField !== null}

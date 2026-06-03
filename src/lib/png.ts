@@ -41,6 +41,66 @@ function uint8ToBase64(u8Arr: Uint8Array): string {
 }
 
 /**
+ * Dynamically scales down and compresses an image via HTML5 Canvas.
+ * Used to prevent massive file uploads from exhausting IndexedDB limits.
+ *
+ * @param file Original File object from the file input
+ * @param options Configurations for dimensions, mime-type, and quality
+ * @returns Promise resolving to a base64 Data URL string
+ */
+export async function compressImage(
+  file: File,
+  options: { maxWidth?: number; maxHeight?: number; type?: string; quality?: number } = {}
+): Promise<string> {
+  const { maxWidth = 1536, maxHeight = 1536, type = "image/png", quality = 0.9 } = options;
+
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let { width, height } = img;
+
+            // Downscale proportionally if dimensions exceed maximums
+            if (width > maxWidth || height > maxHeight) {
+              const ratio = Math.min(maxWidth / width, maxHeight / height);
+              width = Math.floor(width * ratio);
+              height = Math.floor(height * ratio);
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+
+            if (!ctx) {
+              return reject(new Error("Canvas 2D context is not available in this browser."));
+            }
+
+            // Draw image at new scaled dimensions
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL(type, quality));
+          } catch (drawErr) {
+            reject(new Error("Failed to process image drawing on canvas."));
+          }
+        };
+
+        img.onerror = () => reject(new Error("The provided file is not a valid or supported image format."));
+        img.src = e.target?.result as string;
+      };
+
+      reader.onerror = () => reject(new Error("Failed to read the file from disk."));
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      reject(new Error(err.message || "Unknown error during image compression setup."));
+    }
+  });
+}
+
+/**
  * Creates a standard uncompressed tEXt chunk for PNG metadata injection.
  */
 function createTextChunk(keyword: string, dataB64: string): Uint8Array {
@@ -147,7 +207,6 @@ export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Pr
             return decoder.decode(jsonBytes);
           } catch (e) {
             console.error("Failed to decode base64 tEXt chunk payload:", e);
-            // We do not throw to allow graceful fallback to other chunks (e.g. chara instead of ccv3)
           }
         }
       }

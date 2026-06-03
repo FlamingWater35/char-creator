@@ -18,23 +18,27 @@
     X,
   } from "@lucide/svelte";
   import { fade } from "svelte/transition";
-  import { extractCharacterCardMetadata, generateThumbnail } from "$lib/png";
+  import {
+    extractCharacterCardMetadata,
+    generateThumbnail,
+    compressImage,
+  } from "$lib/png";
 
-  // Reactive state for UI data and loading indicators
   let characters = $state<Character[]>([]);
   let searchQuery = $state("");
   let loading = $state(true);
   let isImporting = $state(false);
   let fileInputImport = $state<HTMLInputElement>();
 
-  // Real-time local search derived state for filtering dashboard cards
   let filteredCharacters = $derived(
     characters.filter((c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()),
     ),
   );
 
-  // Fetches initial character list on mount, omitting heavy base64 to ensure fast load times
+  /**
+   * Fetches initial character list safely.
+   */
   onMount(async () => {
     try {
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
@@ -49,7 +53,9 @@
     }
   });
 
-  // Initializes and commits a blank default character template to IndexedDB, then navigates to editor
+  /**
+   * Initializes a blank default character template and redirects to editor.
+   */
   async function createNew() {
     const id = crypto.randomUUID();
     const newChar: Character = {
@@ -84,7 +90,9 @@
     }
   }
 
-  // Wipes a character and all its decoupled binary/asset dependencies to free up local storage quota
+  /**
+   * Drops a character entry and all dependencies from local IndexedDB.
+   */
   async function deleteChar(id: string) {
     const confirmed = await dialogs.confirm(
       "Are you sure you want to delete this character? This cannot be undone.",
@@ -92,7 +100,6 @@
     if (!confirmed) return;
 
     try {
-      // Execute as a transaction to prevent orphaned assets if one table deletion fails
       await db.transaction(
         "rw",
         db.characters,
@@ -112,7 +119,6 @@
     }
   }
 
-  // Parses legacy Tavern greeting text blocks into structured example message objects
   function parseExampleMessages(
     mesExample: string | undefined | null,
   ): ExampleMessage[] {
@@ -160,7 +166,6 @@
     return examples;
   }
 
-  // Cleans and splits composite description payloads on import to map legacy cards to our schema
   function extractSection(
     text: string,
     header: string,
@@ -182,7 +187,10 @@
     return { content: "", cleanedText: text };
   }
 
-  // Parses uploaded PNG, extracts V2/V3 metadata, generates a thumbnail, and transacts it to DB
+  /**
+   * Decodes embedded metadata from PNG imports, configures a character object,
+   * compresses the image to prevent quota issues, and transactions it to IndexedDB.
+   */
   async function handleImportCard(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -246,14 +254,12 @@
       const description = fullDesc.trim();
       if (!mainPrompt) mainPrompt = description.substring(0, 150) || name;
 
-      // Wrap FileReader in robust Promise with explicit rejections to prevent hanging UI
-      const reader = new FileReader();
-      const base64Image = await new Promise<string>((resolve, reject) => {
-        reader.onload = (event) => resolve(event.target?.result as string);
-        reader.onerror = () =>
-          reject(new Error("Browser failed to read the local file stream."));
-        reader.onabort = () => reject(new Error("File read was aborted."));
-        reader.readAsDataURL(file);
+      // Extract metadata beforehand, then compress down to normalize size and stop massive files
+      // Retaining PNG format is required to allow subsequent PNG metadata injection exports to work properly.
+      const base64Image = await compressImage(file, {
+        maxWidth: 1024,
+        maxHeight: 1024,
+        type: "image/png",
       });
 
       const thumbnail = base64Image
@@ -268,7 +274,6 @@
       const exampleMessages = parseExampleMessages(data.mes_example);
       let assets: any[] = [];
 
-      // Parse V3 Asset arrays
       if (Array.isArray(data.assets)) {
         assets = data.assets
           .map((asset: any) => ({
@@ -282,9 +287,7 @@
             ext: asset.ext || "png",
           }))
           .filter((asset: any) => asset.uri);
-      }
-      // Parse V2 Extensions fallback
-      else if (data.extensions?.assets) {
+      } else if (data.extensions?.assets) {
         const v2Assets = data.extensions.assets;
         if (typeof v2Assets === "object") {
           Object.entries(v2Assets).forEach(([key, val]) => {
@@ -372,7 +375,6 @@
         },
       };
 
-      // Transaction ensures we don't save half a character if asset size breaks IndexedDB quota
       await db.transaction(
         "rw",
         db.characters,
@@ -412,7 +414,6 @@
   <title>Char Creator - Dashboard</title>
 </svelte:head>
 
-<!-- Header Actions -->
 <div
   class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4 animate-fade-in"
 >
@@ -440,7 +441,6 @@
   </div>
 </div>
 
-<!-- Instant filter search input -->
 {#if characters.length > 0}
   <div
     class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
@@ -473,7 +473,6 @@
   onchange={handleImportCard}
 />
 
-<!-- Main Character Grid Viewport with aria-live for a11y screenreader announcements -->
 <div aria-live="polite">
   {#if loading}
     <div
@@ -533,7 +532,7 @@
                 {#if char.data.thumbnail}
                   <img
                     src={char.data.thumbnail}
-                    alt={char.name}
+                    alt="{char.name} Thumbnail"
                     class="w-full h-full object-cover"
                   />
                 {:else}

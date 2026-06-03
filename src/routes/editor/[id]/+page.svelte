@@ -10,11 +10,11 @@
     injectCharacterCardMetadata,
     generateThumbnail,
     generateDefaultBlackPNG,
+    compressImage,
   } from "$lib/png";
   import {
     Sparkles,
     Loader2,
-    Save,
     ArrowLeft,
     Copy,
     Check,
@@ -24,7 +24,6 @@
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
-  // Sub-component Imports
   import MediaAssets from "$lib/components/editor/MediaAssets.svelte";
   import Lorebook from "$lib/components/editor/Lorebook.svelte";
   import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
@@ -43,7 +42,6 @@
   let generatingAll = $state(false);
   let copied = $state(false);
 
-  // Tracks active database writing status
   let saveState = $state<"idle" | "waiting" | "saving" | "error">("idle");
   let isInitialLoad = true;
   let saveTimeout: ReturnType<typeof setTimeout>;
@@ -55,7 +53,6 @@
 
   /**
    * Realtime context estimator representing average English word structures (characters / 4).
-   * Generates a token budget approximation without dragging in heavy tokenizer packages.
    */
   let estimatedTokens = $derived.by(() => {
     if (!character) return 0;
@@ -86,7 +83,6 @@
       }
       character = char;
 
-      // Extract isolated high-res image and assets list
       const imgObj = await db.characterImages.get(characterId);
       characterImage = imgObj?.image || null;
 
@@ -116,16 +112,15 @@
     }
   });
 
-  // Watcher targeting automatic debounced background saves
+  /**
+   * Background Auto-save mechanism.
+   * Tracks deep reactive property reads directly to drastically improve typing performance.
+   */
   $effect(() => {
     if (character) {
-      // Binds watcher targets to tracking state
-      const trigger = JSON.stringify({
-        name: character.name,
-        data: character.data,
-        img: characterImage,
-        assets: characterAssets,
-      });
+      $state.snapshot(character);
+      $state.snapshot(characterImage);
+      $state.snapshot(characterAssets);
 
       if (isInitialLoad) {
         isInitialLoad = false;
@@ -137,7 +132,7 @@
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(() => {
           saveCharacter();
-        }, 1000); // 1s Debounce
+        }, 1000);
       });
     }
   });
@@ -172,12 +167,12 @@
 
       if (saveState === "saving") {
         setTimeout(() => {
-          saveState = "idle";
+          if (saveState === "saving") saveState = "idle";
         }, 1000);
       }
     } catch (err) {
       console.error("Background autosave failed:", err);
-      saveState = "error"; // Alert the user of DB write locks or quota caps
+      saveState = "error";
     }
   }
 
@@ -191,34 +186,36 @@
   function handleBeforeUnload(e: BeforeUnloadEvent) {
     forceImmediateSave();
     if (saveState === "waiting" || saveState === "saving") {
-      e.preventDefault(); // Triggers browser confirmation block to preserve pending database streams
+      e.preventDefault();
     }
   }
 
   /**
-   * Converts uploaded user graphic files to lossless base64 original streams,
-   * and auto-generates lightweight JPEG thumbnails.
+   * Converts uploaded user graphic files, compresses to PNG to ensure metadata survives export.
    */
   async function handleImageUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        if (character) {
-          characterImage = base64;
-          character.data.thumbnail = await generateThumbnail(base64);
-        }
-      };
-      reader.onerror = () => {
-        dialogs.alert("Could not load image file.", "Error");
-      };
-      reader.readAsDataURL(file);
+      // Compress to max 1024x1024 PNG to normalize sizes and prevent DB bloating
+      const compressedImage = await compressImage(file, {
+        maxWidth: 1024,
+        maxHeight: 1024,
+        type: "image/png",
+      });
+
+      if (character) {
+        characterImage = compressedImage;
+        character.data.thumbnail = await generateThumbnail(
+          compressedImage,
+        ).catch(() => null);
+      }
     } catch (error: any) {
       console.error(error);
       dialogs.alert("Failed to process image file: " + error.message, "Error");
+    } finally {
+      if (fileInput) fileInput.value = "";
     }
   }
 
@@ -302,8 +299,10 @@
     if (!character) return;
     activeGeneratingField = fieldName;
     const prompt = `You are an expert roleplay character creator.\nThe main concept for this character is: ${character.data.mainPrompt}\n\nPlease expand, refine, and improve the following field [${fieldName}]:\n${currentContent || "(No content yet)"}\n\nRespond ONLY with the improved content. Do not include any meta-commentary or explanations. Keep the tone appropriate for character definitions.`;
+
     const result = await callAI(prompt, aiSystemPrompt);
     if (result) updateCb(result.trim());
+
     if (activeGeneratingField === fieldName) activeGeneratingField = null;
   }
 
@@ -424,7 +423,7 @@
       } catch (e) {
         console.error("Failed to parse JSON response", e);
         dialogs.alert(
-          "Failed to parse AI response. The model might not have returned valid JSON.",
+          "Failed to parse AI response into structured data. The LLM may have hallucinated formatting.",
           "Parsing Error",
         );
       }
@@ -469,7 +468,6 @@
       ext: asset.ext,
     }));
 
-    // Legacy standard mappings for strict third-party parsers
     const characterBookData = {
       name: character.data.characterBook?.name || "",
       description: character.data.characterBook?.description || "",
@@ -605,6 +603,9 @@
     }
   }
 
+  /**
+   * Formats the raw payload into a neat string block and sets to clipboard.
+   */
   function copyToClipboard() {
     if (!character) return;
     const c = character.data;
@@ -619,6 +620,7 @@
     if (c.backstory?.trim()) subfields.push(`Backstory: ${c.backstory.trim()}`);
     if (c.relatedCharacters?.trim())
       subfields.push(`Related Characters: ${c.relatedCharacters.trim()}`);
+
     if (subfields.length > 0) descPart += "\n\n" + subfields.join("\n");
     if (descPart) parts.push(descPart);
 
@@ -667,6 +669,7 @@
     <div
       out:fade={{ duration: 150 }}
       class="flex flex-col justify-center items-center py-32 text-muted-foreground w-full"
+      role="status"
     >
       <Loader2 class="w-8 h-8 animate-spin mb-4" />
       <p>Loading editor...</p>
@@ -805,7 +808,6 @@
           ></textarea>
         </div>
 
-        <!-- Main Fields Section -->
         <div class="space-y-8">
           <div class="space-y-3">
             <div
@@ -849,7 +851,6 @@
             ></textarea>
           </div>
 
-          <!-- FIRST MESSAGES -->
           <FirstGreetings
             bind:firstMessages={character.data.firstMessages}
             {generatingAll}
@@ -858,7 +859,6 @@
             oncancel={cancelGeneration}
           />
 
-          <!-- EXAMPLE MESSAGES -->
           <ExampleDialogues
             bind:exampleMessages={character.data.exampleMessages}
             {generatingAll}
@@ -879,7 +879,6 @@
           oncancel={cancelGeneration}
         />
 
-        <!-- Media Assets Management Grid -->
         <MediaAssets
           bind:assets={characterAssets}
           characterId={character.id}
@@ -887,7 +886,6 @@
           {activeGeneratingField}
         />
 
-        <!-- Lorebook / Character Book Panel -->
         <Lorebook
           bind:characterBook={character.data.characterBook}
           bind:worldInfo={character.data.worldInfo}
@@ -896,10 +894,10 @@
         />
       </div>
 
-      <!-- Realtime Token and Database Status Indicators -->
       <div class="fixed bottom-6 right-6 z-40 flex items-center gap-3">
         <div
           class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+          aria-label="Context token estimate"
         >
           <span class="w-2 h-2 rounded-full bg-blue-500"></span>
           <span>~{estimatedTokens} Tokens</span>
@@ -907,6 +905,7 @@
 
         <div
           class="bg-card border px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold text-muted-foreground"
+          role="status"
         >
           {#if saveState === "waiting"}
             <span>Unsaved changes...</span>

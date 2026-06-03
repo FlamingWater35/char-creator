@@ -3,7 +3,10 @@
   import { fade, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
 
-  // Handles Escape press events to close modal windows gracefully
+  /**
+   * Handles Escape press events to close modal windows gracefully
+   * Maps to a cancellation (false) to prevent accidental confirmations.
+   */
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && dialogs.isOpen) {
       dialogs.close(false);
@@ -11,7 +14,7 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if dialogs.isOpen}
   <!-- Backdrop Blur Mask -->
@@ -23,11 +26,18 @@
     <div
       transition:scale={{ duration: 150, start: 0.95, easing: cubicOut }}
       class="bg-card text-card-foreground border rounded-lg shadow-lg w-full max-w-md p-6"
-      role="dialog"
+      role="alertdialog"
       aria-modal="true"
+      aria-labelledby="dialog-title"
+      aria-describedby="dialog-message"
     >
-      <h2 class="text-lg font-semibold mb-2">{dialogs.title}</h2>
-      <p class="text-sm text-muted-foreground mb-6 whitespace-pre-wrap">
+      <h2 id="dialog-title" class="text-lg font-semibold mb-2">
+        {dialogs.title}
+      </h2>
+      <p
+        id="dialog-message"
+        class="text-sm text-muted-foreground mb-6 whitespace-pre-wrap"
+      >
         {dialogs.message}
       </p>
 
