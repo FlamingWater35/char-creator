@@ -111,14 +111,54 @@
   });
 
   /**
-   * Background Auto-save mechanism.
-   * Tracks deep reactive property reads directly to drastically improve typing performance.
+   * Background Auto-save dependency tracker.
+   * Walks the reactive proxy paths shallowly without allocating memory or deep-cloning,
+   * completely eliminating keystroke latency while preserving deep auto-saves.
    */
   $effect(() => {
     if (character) {
-      $state.snapshot(character);
-      $state.snapshot(characterImage);
-      $state.snapshot(characterAssets);
+      void character.name;
+      void character.data.mainPrompt;
+      void character.data.description;
+      void character.data.personality;
+      void character.data.scenario;
+      void character.data.backstory;
+      void character.data.relatedCharacters;
+      void character.data.worldInfo;
+
+      for (let i = 0; i < character.data.firstMessages.length; i++) {
+        void character.data.firstMessages[i];
+      }
+      for (let i = 0; i < character.data.exampleMessages.length; i++) {
+        const msg = character.data.exampleMessages[i];
+        void msg.user;
+        void msg.character;
+      }
+
+      const book = character.data.characterBook;
+      void book.name;
+      void book.description;
+      for (let i = 0; i < book.entries.length; i++) {
+        const entry = book.entries[i];
+        void entry.enabled;
+        void entry.constant;
+        void entry.content;
+        void entry.priority;
+        void entry.comment;
+        for (let j = 0; j < entry.keys.length; j++) void entry.keys[j];
+        if (entry.secondary_keys) {
+          for (let j = 0; j < entry.secondary_keys.length; j++)
+            void entry.secondary_keys[j];
+        }
+      }
+
+      void characterImage;
+      for (let i = 0; i < characterAssets.length; i++) {
+        const asset = characterAssets[i];
+        void asset.name;
+        void asset.type;
+        void asset.uri;
+      }
 
       if (isInitialLoad) {
         isInitialLoad = false;
