@@ -74,6 +74,7 @@
       presencePenalty: settings.presencePenalty,
       topP: settings.topP,
       maxTokens: settings.maxTokens,
+      systemPrompt: settings.systemPrompt,
       provider: settings.provider,
       customBaseUrl: settings.customBaseUrl,
       genName: settings.genName,
@@ -173,6 +174,7 @@
           presencePenalty: settings.presencePenalty,
           topP: settings.topP,
           maxTokens: settings.maxTokens,
+          systemPrompt: settings.systemPrompt,
           provider: settings.provider,
           customBaseUrl: settings.customBaseUrl,
           genName: settings.genName,
@@ -245,6 +247,8 @@
           settings.presencePenalty = s.presencePenalty;
         if (typeof s.topP === "number") settings.topP = s.topP;
         if (typeof s.maxTokens === "number") settings.maxTokens = s.maxTokens;
+        if (typeof s.systemPrompt === "string")
+          settings.systemPrompt = s.systemPrompt;
         if (typeof s.provider === "string") settings.provider = s.provider;
         if (typeof s.customBaseUrl === "string")
           settings.customBaseUrl = s.customBaseUrl;
@@ -276,7 +280,6 @@
         for (const char of backup.characters) {
           if (!char.id || !char.name) continue;
 
-          // Legacy backwards compatibility handling for nested structures
           let fallbackImage = null;
           let fallbackAssets = [];
           if (char.data.image) {
@@ -333,7 +336,6 @@
           }
         }
 
-        // Import decoupled tables
         if (Array.isArray(backup.characterImages)) {
           await db.characterImages.bulkPut(backup.characterImages);
         }
@@ -718,6 +720,29 @@
                   bind:value={settings.presencePenalty}
                   class="w-full accent-primary"
                 />
+              </div>
+
+              <!-- Interactive System Prompt text editor configuration -->
+              <div class="space-y-3 pt-4 border-t border-border/30">
+                <div class="flex justify-between items-center">
+                  <label class="font-bold text-xs" for="systemPrompt"
+                    >AI System Prompt (Custom Base Instruction)</label
+                  >
+                  <button
+                    type="button"
+                    onclick={() => settings.resetSystemPrompt()}
+                    class="text-[10px] text-blue-500 hover:text-blue-600 font-bold transition-colors cursor-pointer"
+                  >
+                    Reset Prompt
+                  </button>
+                </div>
+                <textarea
+                  id="systemPrompt"
+                  bind:value={settings.systemPrompt}
+                  rows="6"
+                  class="w-full border rounded-xl px-3 py-2.5 bg-background text-xs font-sans focus:ring-2 focus:ring-blue-500 focus:outline-none resize-y min-h-24"
+                  placeholder="System prompt instructions..."
+                ></textarea>
               </div>
             </div>
           {/if}

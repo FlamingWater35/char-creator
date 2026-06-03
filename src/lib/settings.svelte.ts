@@ -1,4 +1,16 @@
 /**
+ * Factory-default base instructions designed to guide modern LLMs to generate
+ * highly nuanced, structurally stable, and organic three-dimensional characters.
+ */
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert AI roleplay character creator, creative writer, and narrative designer. Your goal is to construct multi-dimensional, psychologically complex, and organic characters with deep nuance, avoiding flat archetypes or clichés.
+
+When generating or refining characters:
+1. Infuse them with internal contradictions, distinct vulnerabilities, speech patterns, and micro-details of appearance or posture.
+2. Ensure relationship dynamics and backstory events directly shape their current personality and worldview.
+3. Do not use conversational filler, meta-introductions, or conversational outro commentary.
+4. If generating raw text, output only the requested refinement. If requested to generate JSON, output ONLY a valid, syntax-compliant JSON object without markdown wrappers or code block wrapping.`;
+
+/**
  * App-wide settings and parameters for API providers, AI generation toggles,
  * and card export specifications. Saves instantly to localStorage on changes.
  */
@@ -12,6 +24,7 @@ class Settings {
   // Advanced AI parameters
   topP = $state(1.0);
   maxTokens = $state(8192);
+  systemPrompt = $state('');
 
   // Provider configuration
   provider = $state('openrouter');
@@ -50,6 +63,7 @@ class Settings {
 
         this.topP = parseFloat(localStorage.getItem('or_top_p') || '1.0');
         this.maxTokens = parseInt(localStorage.getItem('or_max_tokens') || '8192', 10);
+        this.systemPrompt = localStorage.getItem('or_system_prompt') || DEFAULT_SYSTEM_PROMPT;
 
         this.provider = localStorage.getItem('or_provider') || 'openrouter';
         this.customBaseUrl = localStorage.getItem('or_custom_url') || '';
@@ -85,6 +99,7 @@ class Settings {
 
         localStorage.setItem('or_top_p', this.topP.toString());
         localStorage.setItem('or_max_tokens', this.maxTokens.toString());
+        localStorage.setItem('or_system_prompt', this.systemPrompt);
 
         localStorage.setItem('or_provider', this.provider);
         localStorage.setItem('or_custom_url', this.customBaseUrl);
@@ -107,6 +122,14 @@ class Settings {
   }
 
   /**
+   * Restores system prompt back to the factory-optimized baseline.
+   */
+  resetSystemPrompt() {
+    this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    this.save();
+  }
+
+  /**
    * Restores settings to their original factory defaults.
    */
   resetToDefaults() {
@@ -117,6 +140,7 @@ class Settings {
     this.presencePenalty = 0;
     this.topP = 1.0;
     this.maxTokens = 8192;
+    this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
     this.provider = 'openrouter';
     this.customBaseUrl = '';
     this.genName = true;

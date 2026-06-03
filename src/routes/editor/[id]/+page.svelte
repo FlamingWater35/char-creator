@@ -31,8 +31,6 @@
   import Subfields from "$lib/components/editor/Subfields.svelte";
 
   let characterId = $derived($page.params.id as string);
-  const aiSystemPrompt =
-    "You are an expert AI character creator and writer. You output ONLY the requested content, without conversational filler or markdown formatting blocks unless explicitly requested.";
 
   let character = $state<Character | null>(null);
   let characterImage = $state<string | null>(null);
@@ -198,7 +196,6 @@
     if (!file) return;
 
     try {
-      // Compress to max 1024x1024 PNG to normalize sizes and prevent DB bloating
       const compressedImage = await compressImage(file, {
         maxWidth: 1024,
         maxHeight: 1024,
@@ -300,7 +297,7 @@
     activeGeneratingField = fieldName;
     const prompt = `You are an expert roleplay character creator.\nThe main concept for this character is: ${character.data.mainPrompt}\n\nPlease expand, refine, and improve the following field [${fieldName}]:\n${currentContent || "(No content yet)"}\n\nRespond ONLY with the improved content. Do not include any meta-commentary or explanations. Keep the tone appropriate for character definitions.`;
 
-    const result = await callAI(prompt, aiSystemPrompt);
+    const result = await callAI(prompt, settings.systemPrompt);
     if (result) updateCb(result.trim());
 
     if (activeGeneratingField === fieldName) activeGeneratingField = null;
@@ -340,7 +337,7 @@
         "Details about other related characters, including their names, relationships, and brief descriptions";
 
     const prompt = `Generate a roleplay character profile based on this concept:\n"${character.data.mainPrompt}"\n\nRespond ONLY with a valid JSON object matching this schema exactly. Output ONLY raw JSON, no markdown blocks.\n\n${JSON.stringify(schemaObj, null, 2)}`;
-    const result = await callAI(prompt, aiSystemPrompt);
+    const result = await callAI(prompt, settings.systemPrompt);
 
     if (result) {
       try {
