@@ -254,8 +254,6 @@
       const description = fullDesc.trim();
       if (!mainPrompt) mainPrompt = description.substring(0, 150) || name;
 
-      // Extract metadata beforehand, then compress down to normalize size and stop massive files
-      // Retaining PNG format is required to allow subsequent PNG metadata injection exports to work properly.
       const base64Image = await compressImage(file, {
         maxWidth: 1024,
         maxHeight: 1024,
@@ -443,20 +441,23 @@
 
 {#if characters.length > 0}
   <div
-    class="mb-6 relative flex items-center bg-card border rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
+    class="mb-6 h-12 relative flex items-center bg-card border rounded-xl px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
   >
-    <Search class="w-5 h-5 text-muted-foreground mr-3" aria-hidden="true" />
+    <Search
+      class="w-5 h-5 text-muted-foreground mr-3 shrink-0"
+      aria-hidden="true"
+    />
     <input
       type="text"
       bind:value={searchQuery}
       placeholder="Search characters by name..."
       aria-label="Search characters"
-      class="w-full bg-transparent focus:outline-none text-sm font-medium text-foreground"
+      class="w-full h-full bg-transparent focus:outline-none text-sm font-medium text-foreground"
     />
     {#if searchQuery}
       <button
         onclick={() => (searchQuery = "")}
-        class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
         aria-label="Clear Search Query"
       >
         <X class="w-4 h-4" />

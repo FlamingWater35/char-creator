@@ -44,6 +44,9 @@
     ) || [],
   );
 
+  /**
+   * Appends an empty structured fact record to the character's memory layout book.
+   */
   function addLorebookEntry() {
     const newId = crypto.randomUUID();
     characterBook.entries = [
@@ -62,10 +65,16 @@
     expandedEntries[newId] = true;
   }
 
+  /**
+   * Purges a fact record entry based on target database ID.
+   */
   function removeLorebookEntry(id: string) {
     characterBook.entries = characterBook.entries.filter((e) => e.id !== id);
   }
 
+  /**
+   * Expands or collapses a targeted metadata entry card section.
+   */
   function toggleExpand(id: string) {
     expandedEntries[id] = !expandedEntries[id];
   }
@@ -98,7 +107,6 @@
     </button>
   </div>
 
-  <!-- Standalone External Lorebooks Reference -->
   <div
     class="p-4 bg-muted/30 rounded-xl border border-dashed border-border/80 space-y-3"
   >
@@ -160,18 +168,18 @@
 
   {#if characterBook.entries.length > 0}
     <div
-      class="relative flex items-center bg-secondary/10 border rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-blue-500"
+      class="relative h-10 flex items-center bg-secondary/10 border rounded-xl px-3 focus-within:ring-2 focus-within:ring-blue-500"
     >
       <input
         type="text"
         bind:value={lorebookSearchQuery}
         placeholder="Search active triggers, comments or entry content..."
-        class="w-full text-xs bg-transparent focus:outline-none py-1 text-foreground"
+        class="w-full h-full text-xs bg-transparent focus:outline-none text-foreground"
       />
       {#if lorebookSearchQuery}
         <button
           onclick={() => (lorebookSearchQuery = "")}
-          class="p-1 text-muted-foreground hover:text-foreground"
+          class="p-1 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
         >
           <X class="w-3.5 h-3.5" />
         </button>
@@ -198,7 +206,6 @@
         <div
           class="border rounded-xl bg-secondary/10 shadow-sm relative group overflow-hidden"
         >
-          <!-- Collapsible Header -->
           <div
             class="w-full text-left p-4 sm:p-5 flex justify-between items-center gap-4 hover:bg-secondary/20 transition-colors cursor-pointer"
             role="button"
@@ -272,7 +279,6 @@
             </div>
           </div>
 
-          <!-- Expandable Body -->
           {#if expandedEntries[entry.id]}
             <div
               class="p-4 sm:p-5 border-t border-border/50 space-y-4 bg-background/50"
