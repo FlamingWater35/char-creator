@@ -11,7 +11,9 @@
     generateThumbnail,
     generateDefaultBlackPNG,
     compressImage,
+    toPngDataUrl,
   } from "$lib/png";
+  import { buildCardPayload } from "$lib/card";
   import {
     Sparkles,
     Loader2,
@@ -43,6 +45,11 @@
   let saveState = $state<"idle" | "waiting" | "saving" | "error">("idle");
   let isInitialLoad = true;
   let saveTimeout: ReturnType<typeof setTimeout>;
+
+  /** Last values actually committed, so unchanged tables are never rewritten. */
+  let lastSavedImage: string | null = null;
+  let lastSavedAssetKey = "";
+  let saveInFlight: Promise<void> | null = null;
 
   let activeGeneratingField = $state<string | null>(null);
   let aiAbortController = $state<AbortController | null>(null);
@@ -89,6 +96,24 @@
           .where("characterId")
           .equals(characterId)
           .toArray()) || [];
+
+      lastSavedImage = characterImage;
+      lastSavedAssetKey = assetKey(characterAssets);
+
+      // Repairs characters whose thumbnail was wiped by the old v8 migration:
+      // the full image is still in IndexedDB, so the preview can be rebuilt.
+      if (!character.data.thumbnail && characterImage) {
+        generateThumbnail(characterImage, 128)
+          .then((thumb) => {
+            if (character && !character.data.thumbnail) {
+              character.data.thumbnail = thumb;
+              saveCharacter();
+            }
+          })
+          .catch(() => {
+            /* A missing thumbnail only costs a little bandwidth. */
+          });
+      }
     } catch (err: any) {
       console.error("Failed to load character:", err);
       dialogs.alert(
@@ -101,14 +126,30 @@
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    // `beforeunload` cannot await IndexedDB, so the durable flush happens here:
+    // both events fire before the page is torn down and are reliable on mobile.
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", forceImmediateSave);
   });
 
   onDestroy(() => {
     forceImmediateSave();
     if (typeof window !== "undefined") {
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", forceImmediateSave);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     }
   });
+
+  /**
+   * Cheap identity for the asset table: enough to detect add/remove/rename
+   * without hashing megabytes of base64 on every keystroke.
+   */
+  function assetKey(assets: CharacterAsset[]): string {
+    return assets
+      .map((a) => `${a.id}:${a.name}:${a.type}:${a.uri.length}:${a.ext}`)
+      .join("|");
+  }
 
   /**
    * Background Auto-save dependency tracker.
@@ -177,59 +218,118 @@
 
   /**
    * Commits current active Svelte state snap payloads to IndexedDB tables.
+   *
+   * Everything lands in a single transaction so a failure cannot leave the
+   * character row updated while its image or assets are stale, and tables whose
+   * content did not change are skipped entirely.
    */
   async function saveCharacter() {
     if (!character) return;
-    saveState = "saving";
 
-    const snap = $state.snapshot(character);
-    const snapImg = $state.snapshot(characterImage);
-    const snapAssets = $state.snapshot(characterAssets);
+    // Serialise saves: two overlapping transactions would race on the same rows.
+    if (saveInFlight) {
+      await saveInFlight;
+      if (!character) return;
+    }
 
-    snap.updatedAt = new Date();
+    const run = (async () => {
+      saveState = "saving";
 
-    try {
-      await db.characters.put(snap);
-      if (snapImg) {
-        await db.characterImages.put({ id: snap.id, image: snapImg });
-      } else {
-        await db.characterImages.delete(snap.id);
-      }
+      const snap = $state.snapshot(character) as Character;
+      const snapImg = $state.snapshot(characterImage) as string | null;
+      const snapAssets = $state.snapshot(characterAssets) as CharacterAsset[];
 
-      await db.characterAssets.where("characterId").equals(snap.id).delete();
-      if (snapAssets.length > 0) {
-        await db.characterAssets.bulkPut(
-          snapAssets.map((a) => ({ ...a, characterId: snap.id })),
+      snap.updatedAt = new Date();
+
+      const imageChanged = snapImg !== lastSavedImage;
+      const currentAssetKey = assetKey(snapAssets);
+      const assetsChanged = currentAssetKey !== lastSavedAssetKey;
+
+      try {
+        await db.transaction(
+          "rw",
+          db.characters,
+          db.characterImages,
+          db.characterAssets,
+          async () => {
+            await db.characters.put(snap);
+
+            if (imageChanged) {
+              if (snapImg) {
+                await db.characterImages.put({ id: snap.id, image: snapImg });
+              } else {
+                await db.characterImages.delete(snap.id);
+              }
+            }
+
+            if (assetsChanged) {
+              await db.characterAssets
+                .where("characterId")
+                .equals(snap.id)
+                .delete();
+              if (snapAssets.length > 0) {
+                await db.characterAssets.bulkPut(
+                  snapAssets.map((a) => ({ ...a, characterId: snap.id })),
+                );
+              }
+            }
+          },
+        );
+
+        lastSavedImage = snapImg;
+        lastSavedAssetKey = currentAssetKey;
+
+        if (saveState === "saving") {
+          setTimeout(() => {
+            if (saveState === "saving") saveState = "idle";
+          }, 1000);
+        }
+      } catch (err: any) {
+        console.error("Background autosave failed:", err);
+        saveState = "error";
+        dialogs.alert(
+          "Autosave failed: " + (err?.message || "unknown error") +
+            ". Your recent edits are still on screen — copy them somewhere safe before reloading.",
+          "Save Failed",
         );
       }
+    })();
 
-      if (saveState === "saving") {
-        setTimeout(() => {
-          if (saveState === "saving") saveState = "idle";
-        }, 1000);
-      }
-    } catch (err) {
-      console.error("Background autosave failed:", err);
-      saveState = "error";
+    saveInFlight = run;
+    try {
+      await run;
+    } finally {
+      saveInFlight = null;
     }
   }
 
   function forceImmediateSave() {
     if (saveState === "waiting" && character) {
       clearTimeout(saveTimeout);
-      saveCharacter();
+      void saveCharacter();
     }
   }
 
+  function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") forceImmediateSave();
+  }
+
   function handleBeforeUnload(e: BeforeUnloadEvent) {
-    forceImmediateSave();
+    // Only prompt when a write is genuinely in flight; `preventDefault` here
+    // would otherwise nag on every navigation even after a successful save.
     if (saveState === "waiting" || saveState === "saving") {
+      forceImmediateSave();
       e.preventDefault();
+      e.returnValue = "";
     }
   }
 
   /**
-   * Converts uploaded user graphic files, compresses to PNG to ensure metadata survives export.
+   * Converts uploaded user graphic files.
+   *
+   * The avatar is stored as JPEG (roughly an order of magnitude smaller than an
+   * equivalent PNG) and re-encoded to PNG only at export time, where the card
+   * metadata needs PNG chunks.
    */
   async function handleImageUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -239,7 +339,8 @@
       const compressedImage = await compressImage(file, {
         maxWidth: 1024,
         maxHeight: 1024,
-        type: "image/png",
+        type: "image/jpeg",
+        quality: 0.9,
       });
 
       if (character) {
@@ -471,7 +572,7 @@
   /**
    * Formats specifications parameters and compiles base64 PNG card files.
    */
-  function downloadCardPNG() {
+  async function downloadCardPNG() {
     if (!character) return;
 
     let imgData = characterImage;
@@ -505,123 +606,55 @@
       ext: asset.ext,
     }));
 
-    const characterBookData = {
-      name: character.data.characterBook?.name || "",
-      description: character.data.characterBook?.description || "",
-      entries: (character.data.characterBook?.entries || []).map((entry) => ({
-        id: entry.id,
-        keys: entry.keys,
-        key: entry.keys,
-        secondary_keys: entry.secondary_keys || [],
-        keysecondary: entry.secondary_keys || [],
-        content: entry.content,
-        enabled: entry.enabled,
-        disable: !entry.enabled,
-        priority: entry.priority ?? 10,
-        order: entry.priority ?? 10,
-        comment: entry.comment || "",
-        constant: entry.constant ?? false,
-      })),
-    };
+    // Preserves spec fields the editor does not expose (tags, creator,
+    // creator_notes, system_prompt, unknown lorebook keys) instead of
+    // blanking them on every export.
+    const cardData = buildCardPayload(character, {
+      description: finalDesc,
+      personality: settings.mergeTraitsOnExport
+        ? ""
+        : character.data.personality,
+      scenario: settings.mergeTraitsOnExport ? "" : character.data.scenario,
+      assets: specAssetsList,
+    });
 
     const v3Data = {
       spec: "chara_card_v3",
       spec_version: "3.0",
+      data: cardData,
+    };
+
+    const v2Data = {
+      spec: "chara_card_v2",
+      spec_version: "2.0",
       data: {
-        name: character.name,
-        description: finalDesc,
-        personality: settings.mergeTraitsOnExport
-          ? ""
-          : character.data.personality,
-        scenario: settings.mergeTraitsOnExport ? "" : character.data.scenario,
-        first_mes: character.data.firstMessages[0] || "",
-        alternate_greetings: character.data.firstMessages
-          .slice(1)
-          .filter(Boolean),
-        mes_example: character.data.exampleMessages
-          .filter((ex) => ex.character.trim())
-          .map((ex) => {
-            let s = "<START>\n";
-            if (ex.user.trim()) s += `{{user}}: ${ex.user.trim()}\n`;
-            s += `{{char}}: ${ex.character.trim()}`;
-            return s;
-          })
-          .join("\n\n"),
-        creator_notes: "",
-        system_prompt: "",
-        post_history_instructions: "",
-        group_only_greetings: [],
-        tags: [],
-        creator: "",
-        character_version: "1.0",
-        character_book: characterBookData,
-        assets: specAssetsList,
+        ...cardData,
+        // v2 has no `assets` array; it carries them on extensions instead.
         extensions: {
-          char_creator: { mainPrompt: character.data.mainPrompt },
-          world_info: character.data.worldInfo || "",
+          ...cardData.extensions,
+          assets: characterAssets.reduce(
+            (acc, asset) => {
+              acc[asset.name || asset.id] = asset.uri;
+              return acc;
+            },
+            {} as Record<string, string>,
+          ),
         },
-        creation_date: Math.floor(character.createdAt.getTime() / 1000),
-        modification_date: Math.floor(character.updatedAt.getTime() / 1000),
       },
     };
 
-    let v2PayloadStr = "";
-    let v3PayloadStr = "";
-
-    if (settings.exportVersion === "v2") {
-      const v2Data = {
-        spec: "chara_card_v2",
-        spec_version: "2.0",
-        data: {
-          name: character.name,
-          description: finalDesc,
-          personality: settings.mergeTraitsOnExport
-            ? ""
-            : character.data.personality,
-          scenario: settings.mergeTraitsOnExport ? "" : character.data.scenario,
-          first_mes: character.data.firstMessages[0] || "",
-          alternate_greetings: character.data.firstMessages
-            .slice(1)
-            .filter(Boolean),
-          mes_example: character.data.exampleMessages
-            .filter((ex) => ex.character.trim())
-            .map((ex) => {
-              let s = "<START>\n";
-              if (ex.user.trim()) s += `{{user}}: ${ex.user.trim()}\n`;
-              s += `{{char}}: ${ex.character.trim()}`;
-              return s;
-            })
-            .join("\n\n"),
-          creator_notes: "",
-          system_prompt: "",
-          post_history_instructions: "",
-          tags: [],
-          creator: "",
-          character_version: "1.0",
-          character_book: characterBookData,
-          extensions: {
-            char_creator: { mainPrompt: character.data.mainPrompt },
-            world_info: character.data.worldInfo || "",
-            assets: characterAssets.reduce(
-              (acc, asset) => {
-                acc[asset.name || asset.id] = asset.uri;
-                return acc;
-              },
-              {} as Record<string, string>,
-            ),
-          },
-        },
-      };
-      v2PayloadStr = JSON.stringify(v2Data);
-      v3PayloadStr = JSON.stringify(v3Data);
-    } else {
-      v2PayloadStr = JSON.stringify(v3Data.data);
-      v3PayloadStr = JSON.stringify(v3Data);
-    }
+    const v3PayloadStr = JSON.stringify(v3Data);
+    const v2PayloadStr =
+      settings.exportVersion === "v2"
+        ? JSON.stringify(v2Data)
+        : JSON.stringify(cardData);
 
     try {
+      // Card metadata only survives in PNG chunks, so a JPEG avatar is
+      // re-encoded once, here.
+      const pngData = await toPngDataUrl(imgData);
       const finalDataUrl = injectCharacterCardMetadata(
-        imgData,
+        pngData,
         v3PayloadStr,
         v2PayloadStr,
       );
@@ -630,7 +663,9 @@
       const safeName =
         character.name.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "character";
       a.download = `${safeName}_card.png`;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
     } catch (e: any) {
       console.error(e);
       dialogs.alert(

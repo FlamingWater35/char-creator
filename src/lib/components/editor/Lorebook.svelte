@@ -28,6 +28,37 @@
 
   let expandedEntries = $state<Record<string, boolean>>({});
 
+  /**
+   * Raw text of the trigger inputs, keyed by entry id.
+   *
+   * The stored value is a string[] that gets re-joined for display. Binding the
+   * input straight to `entry.keys.join(", ")` re-renders the field after every
+   * keystroke and moves the caret to the end. These drafts are the single source
+   * of truth while typing; the array is only resynced from them.
+   */
+  let keyDrafts = $state<Record<string, string>>({});
+  let secondaryKeyDrafts = $state<Record<string, string>>({});
+
+  function parseKeys(raw: string): string[] {
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  function primaryKeysValue(entry: { id: string; keys: string[] }): string {
+    return keyDrafts[entry.id] ?? entry.keys.join(", ");
+  }
+
+  function secondaryKeysValue(entry: {
+    id: string;
+    secondary_keys?: string[];
+  }): string {
+    return (
+      secondaryKeyDrafts[entry.id] ?? (entry.secondary_keys || []).join(", ")
+    );
+  }
+
   let lorebookSearchQuery = $state("");
   let filteredLorebookEntries = $derived(
     characterBook.entries.filter(
@@ -326,12 +357,16 @@
                   <input
                     id="entry-keys-{idx}"
                     type="text"
-                    value={entry.keys.join(", ")}
+                    value={primaryKeysValue(entry)}
                     oninput={(e) => {
-                      entry.keys = e.currentTarget.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean);
+                      const raw = e.currentTarget.value;
+                      keyDrafts[entry.id] = raw;
+                      entry.keys = parseKeys(raw);
+                    }}
+                    onblur={() => {
+                      // Normalize the field once the user stops typing, so the
+                      // visible text matches the stored array exactly.
+                      delete keyDrafts[entry.id];
                     }}
                     disabled={generatingAll || activeGeneratingField !== null}
                     class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"
@@ -347,12 +382,14 @@
                   <input
                     id="entry-sec-keys-{idx}"
                     type="text"
-                    value={(entry.secondary_keys || []).join(", ")}
+                    value={secondaryKeysValue(entry)}
                     oninput={(e) => {
-                      entry.secondary_keys = e.currentTarget.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean);
+                      const raw = e.currentTarget.value;
+                      secondaryKeyDrafts[entry.id] = raw;
+                      entry.secondary_keys = parseKeys(raw);
+                    }}
+                    onblur={() => {
+                      delete secondaryKeyDrafts[entry.id];
                     }}
                     disabled={generatingAll || activeGeneratingField !== null}
                     class="w-full border rounded-lg px-3 py-1.5 bg-background text-base sm:text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50"

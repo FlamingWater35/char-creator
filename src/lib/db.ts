@@ -41,6 +41,11 @@ export interface CharacterBookEntry {
   priority?: number;
   comment?: string;
   constant?: boolean;
+  /**
+   * Spec fields this app does not model (selective, insertion_order, depth,
+   * probability, ...). Kept verbatim so an imported card round-trips intact.
+   */
+  extra?: Record<string, unknown>;
 }
 
 /**
@@ -50,6 +55,8 @@ export interface CharacterBook {
   name: string;
   description?: string;
   entries: CharacterBookEntry[];
+  /** Unmodelled book-level fields (scan_depth, token_budget, ...). */
+  extra?: Record<string, unknown>;
 }
 
 /**
@@ -72,6 +79,12 @@ export interface Character {
     relatedCharacters: string;
     characterBook: CharacterBook;
     worldInfo: string;
+    /**
+     * Card-spec fields the editor does not expose (system_prompt,
+     * post_history_instructions, creator_notes, tags, creator, ...).
+     * Preserved from import so exporting a card never silently drops them.
+     */
+    cardMeta?: Record<string, unknown>;
   };
 }
 
@@ -183,21 +196,31 @@ export class CharDB extends Dexie {
       characterImages: 'id',
       characterAssets: 'id, characterId'
     }).upgrade(async tx => {
-      await tx.table('characters').toCollection().modify((char) => {
+      // Read first, then write: an async callback inside `modify()` would be
+      // treated as the new record value, so the puts have to be awaited here.
+      const records = await tx.table('characters').toArray();
+
+      for (const char of records) {
+        if (!char?.data) continue;
+
+        let changed = false;
+
         if (char.data.image) {
-          tx.table('characterImages').put({ id: char.id, image: char.data.image });
-          // @ts-ignore - Cleaning deprecated legacy fields
+          await tx.table('characterImages').put({ id: char.id, image: char.data.image });
           delete char.data.image;
+          changed = true;
         }
-        if (char.data.assets && char.data.assets.length > 0) {
+
+        if (Array.isArray(char.data.assets) && char.data.assets.length > 0) {
           for (const asset of char.data.assets) {
-            tx.table('characterAssets').put({ ...asset, characterId: char.id });
+            await tx.table('characterAssets').put({ ...asset, characterId: char.id });
           }
-          // @ts-ignore - Cleaning deprecated legacy fields
           delete char.data.assets;
+          changed = true;
         }
-        char.data.thumbnail = null;
-      });
+
+        if (changed) await tx.table('characters').put(char);
+      }
     });
   }
 }

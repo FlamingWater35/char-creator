@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
 @theme {
+  /* Tailwind v4 ships no `xs` breakpoint; the nav labels rely on it. */
+  --breakpoint-xs: 30rem;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -87,6 +90,46 @@
 }
 .animate-spin {
   animation: spin-fluent 1s linear infinite !important;
+}
+
+/* Tailwind v4 has no built-in `animate-fade-in` / `animate-in` utilities, so
+   the markup's entrance animations were silently doing nothing. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-fade-in {
+  animation: fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-drop-in {
+  animation: drop-in 0.18s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-drop-in,
+  .animate-spin {
+    animation: none !important;
+  }
 }
 
 .page-transition-grid {

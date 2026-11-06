@@ -41,6 +41,39 @@ function uint8ToBase64(u8Arr: Uint8Array): string {
 }
 
 /**
+ * Loads an image, honouring the EXIF orientation flag where the browser
+ * supports it. Without this, phone photos upload sideways.
+ */
+async function loadOrientedImage(
+  file: Blob
+): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      // `imageOrientation` is widely supported but missing from older lib.dom.
+      return await createImageBitmap(file, {
+        imageOrientation: "from-image",
+      } as ImageBitmapOptions);
+    } catch {
+      // Fall through to the <img> path below.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("The provided file is not a valid or supported image format."));
+    };
+    img.src = url;
+  });
+}
+
+/**
  * Dynamically scales down and compresses an image via HTML5 Canvas.
  * Used to prevent massive file uploads from exhausting IndexedDB limits.
  *
@@ -54,59 +87,84 @@ export async function compressImage(
 ): Promise<string> {
   const { maxWidth = 1536, maxHeight = 1536, type = "image/png", quality = 0.9 } = options;
 
-  return new Promise((resolve, reject) => {
-    try {
-      const reader = new FileReader();
+  const source = await loadOrientedImage(file);
 
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            let { width, height } = img;
+  try {
+    let { width, height } = source as { width: number; height: number };
 
-            // Downscale proportionally if dimensions exceed maximums
-            if (width > maxWidth || height > maxHeight) {
-              const ratio = Math.min(maxWidth / width, maxHeight / height);
-              width = Math.floor(width * ratio);
-              height = Math.floor(height * ratio);
-            }
-
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-
-            if (!ctx) {
-              return reject(new Error("Canvas 2D context is not available in this browser."));
-            }
-
-            // Draw image at new scaled dimensions
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL(type, quality));
-          } catch (drawErr) {
-            reject(new Error("Failed to process image drawing on canvas."));
-          }
-        };
-
-        img.onerror = () => reject(new Error("The provided file is not a valid or supported image format."));
-        img.src = e.target?.result as string;
-      };
-
-      reader.onerror = () => reject(new Error("Failed to read the file from disk."));
-      reader.readAsDataURL(file);
-    } catch (err: any) {
-      reject(new Error(err.message || "Unknown error during image compression setup."));
+    if (!width || !height) {
+      throw new Error("The provided image has no readable dimensions.");
     }
-  });
+
+    // Downscale proportionally if dimensions exceed maximums
+    if (width > maxWidth || height > maxHeight) {
+      const ratio = Math.min(maxWidth / width, maxHeight / height);
+      width = Math.max(1, Math.floor(width * ratio));
+      height = Math.max(1, Math.floor(height * ratio));
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new Error("Canvas 2D context is not available in this browser.");
+    }
+
+    // JPEG has no alpha channel: transparent pixels would render black.
+    if (type === "image/jpeg") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    ctx.drawImage(source as CanvasImageSource, 0, 0, width, height);
+    return canvas.toDataURL(type, quality);
+  } finally {
+    if ("close" in source && typeof source.close === "function") source.close();
+  }
+}
+
+/**
+ * Re-encodes any image data URL as PNG.
+ *
+ * Character card metadata can only be injected into PNG chunks, but avatars are
+ * stored as JPEG to keep IndexedDB small — so the conversion happens here, once,
+ * at export time.
+ */
+export async function toPngDataUrl(base64Image: string): Promise<string> {
+  if (base64Image.startsWith("data:image/png")) return base64Image;
+
+  const source = await loadOrientedImage(await (await fetch(base64Image)).blob());
+
+  try {
+    const { width, height } = source as { width: number; height: number };
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context is not available in this browser.");
+
+    ctx.drawImage(source as CanvasImageSource, 0, 0);
+    return canvas.toDataURL("image/png");
+  } finally {
+    if ("close" in source && typeof source.close === "function") source.close();
+  }
 }
 
 /**
  * Creates a standard uncompressed tEXt chunk for PNG metadata injection.
+ *
+ * PNG only permits Latin-1 in tEXt, so the keyword is written as ASCII and the
+ * payload is base64 (also ASCII). Any byte that would break the encoding is
+ * replaced rather than corrupting the chunk.
  */
 function createTextChunk(keyword: string, dataB64: string): Uint8Array {
-  const textStr = keyword + '\0' + dataB64;
-  const dataEncoder = new TextEncoder();
-  const dataBytes = dataEncoder.encode(textStr);
+  const safeKeyword = keyword.replace(/[^\x20-\x7e]/g, '?');
+  const safeData = dataB64.replace(/[^\x20-\x7e]/g, '');
+
+  const textStr = safeKeyword + '\0' + safeData;
+  const dataBytes = new TextEncoder().encode(textStr);
 
   const chunk = new Uint8Array(4 + 4 + dataBytes.length + 4);
   const view = new DataView(chunk.buffer);
@@ -125,6 +183,10 @@ function createTextChunk(keyword: string, dataB64: string): Uint8Array {
 /**
  * Injects standard JSON metadata directly into the image buffer as tEXt chunks.
  * Ensures the exported image retains Character Card data.
+ *
+ * Walks the chunk list instead of searching for the IEND byte pattern, and
+ * drops any card chunk already present so re-exporting cannot accumulate
+ * duplicate payloads.
  */
 export function injectCharacterCardMetadata(base64Image: string, v3JsonString: string, v2JsonString: string): string {
   try {
@@ -132,35 +194,62 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
     if (!b64DataPart) throw new Error("Invalid base64 image data structure");
 
     const binaryString = atob(b64DataPart);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
     const utf8Encoder = new TextEncoder();
-    const v3Data = uint8ToBase64(utf8Encoder.encode(v3JsonString));
-    const v2Data = uint8ToBase64(utf8Encoder.encode(v2JsonString));
+    const v3Chunk = createTextChunk('ccv3', uint8ToBase64(utf8Encoder.encode(v3JsonString)));
+    const v2Chunk = createTextChunk('chara', uint8ToBase64(utf8Encoder.encode(v2JsonString)));
 
-    const v3Chunk = createTextChunk('ccv3', v3Data);
-    const v2Chunk = createTextChunk('chara', v2Data);
+    const kept: Uint8Array[] = [bytes.subarray(0, 8)];
+    let pos = 8;
+    let sawIend = false;
 
-    let iendPos = bytes.length - 12;
-    for (let i = bytes.length - 4; i >= 0; i--) {
-      if (bytes[i] === 73 && bytes[i+1] === 69 && bytes[i+2] === 78 && bytes[i+3] === 68) { // IEND
-        iendPos = i - 4;
+    while (pos + 8 <= bytes.length) {
+      const length = new DataView(bytes.buffer, bytes.byteOffset + pos, 4).getUint32(0, false);
+      const end = pos + 12 + length;
+      if (end > bytes.length) break;
+
+      const type = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]);
+
+      if (type === 'IEND') {
+        sawIend = true;
         break;
       }
+
+      const isCardChunk =
+        (type === 'tEXt' || type === 'iTXt') &&
+        (() => {
+          const data = bytes.subarray(pos + 8, pos + 8 + length);
+          const nul = data.indexOf(0);
+          if (nul === -1) return false;
+          const keyword = String.fromCharCode(...data.subarray(0, nul));
+          return keyword === 'ccv3' || keyword === 'chara';
+        })();
+
+      if (!isCardChunk) kept.push(bytes.subarray(pos, end));
+      pos = end;
     }
 
-    const beforeIend = bytes.subarray(0, iendPos);
-    const iendChunk = bytes.subarray(iendPos);
+    if (!sawIend) throw new Error("PNG has no IEND chunk");
 
-    const newPng = new Uint8Array(beforeIend.length + v3Chunk.length + v2Chunk.length + iendChunk.length);
-    newPng.set(beforeIend, 0);
-    newPng.set(v3Chunk, beforeIend.length);
-    newPng.set(v2Chunk, beforeIend.length + v3Chunk.length);
-    newPng.set(iendChunk, beforeIend.length + v3Chunk.length + v2Chunk.length);
+    const iend = bytes.subarray(pos);
+    const total =
+      kept.reduce((sum, chunk) => sum + chunk.length, 0) + v3Chunk.length + v2Chunk.length + iend.length;
+
+    const newPng = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of kept) {
+      newPng.set(chunk, offset);
+      offset += chunk.length;
+    }
+    newPng.set(v3Chunk, offset);
+    offset += v3Chunk.length;
+    newPng.set(v2Chunk, offset);
+    offset += v2Chunk.length;
+    newPng.set(iend, offset);
 
     return 'data:image/png;base64,' + uint8ToBase64(newPng);
   } catch (error: any) {
@@ -170,80 +259,114 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
 }
 
 /**
- * Extracts and decodes character card metadata from standard uncompressed tEXt or compressed zTXt chunks.
+ * Decodes a base64 payload into UTF-8 text, tolerating payloads that were
+ * written without the base64 wrapper.
+ */
+function decodePayload(raw: string, decoder: TextDecoder): string {
+  try {
+    const binaryString = atob(raw.trim());
+    const jsonBytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      jsonBytes[i] = binaryString.charCodeAt(i);
+    }
+    return decoder.decode(jsonBytes);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Extracts and decodes character card metadata from tEXt, zTXt or iTXt chunks.
  */
 export async function extractCharacterCardMetadata(arrayBuffer: ArrayBuffer): Promise<string | null> {
   const view = new DataView(arrayBuffer);
   const bytes = new Uint8Array(arrayBuffer);
 
-  if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) {
+  if (
+    bytes.length < 8 ||
+    bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47
+  ) {
     throw new Error("Invalid PNG file signature: File is not a valid PNG.");
   }
 
-  let pos = 8;
   const decoder = new TextDecoder("utf-8");
+  let pos = 8;
+  let fallback: string | null = null;
 
-  while (pos < bytes.length) {
-    if (pos + 8 > bytes.length) break;
+  while (pos + 8 <= bytes.length) {
     const length = view.getUint32(pos, false);
-    const typeBytes = bytes.subarray(pos + 4, pos + 8);
-    const type = decoder.decode(typeBytes);
+    const end = pos + 12 + length;
+    if (length < 0 || end > bytes.length) break;
 
-    if (type === 'tEXt') {
-      const chunkData = bytes.subarray(pos + 8, pos + 8 + length);
-      let nullPos = chunkData.indexOf(0);
+    const type = decoder.decode(bytes.subarray(pos + 4, pos + 8));
+    const chunkData = bytes.subarray(pos + 8, pos + 8 + length);
 
-      if (nullPos !== -1) {
-        const keyword = decoder.decode(chunkData.subarray(0, nullPos));
+    if (type === 'tEXt' || type === 'zTXt' || type === 'iTXt') {
+      const nul = chunkData.indexOf(0);
+
+      if (nul !== -1) {
+        const keyword = decoder.decode(chunkData.subarray(0, nul));
+
         if (keyword === 'ccv3' || keyword === 'chara') {
           try {
-            const base64Data = decoder.decode(chunkData.subarray(nullPos + 1));
-            const binaryString = atob(base64Data.trim());
-            const len = binaryString.length;
-            const jsonBytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              jsonBytes[i] = binaryString.charCodeAt(i);
-            }
-            return decoder.decode(jsonBytes);
-          } catch (e) {
-            console.error("Failed to decode base64 tEXt chunk payload:", e);
-          }
-        }
-      }
-    } else if (type === 'zTXt') {
-      const chunkData = bytes.subarray(pos + 8, pos + 8 + length);
-      let nullPos = chunkData.indexOf(0);
+            let payload = '';
 
-      if (nullPos !== -1) {
-        const keyword = decoder.decode(chunkData.subarray(0, nullPos));
-        if (keyword === 'ccv3' || keyword === 'chara') {
-          if (chunkData[nullPos + 1] === 0) { // Compression method 0
-            try {
-              const compressedData = chunkData.subarray(nullPos + 2);
-              const decompressed = await decompressZlib(compressedData);
-              const decodedStr = decoder.decode(decompressed);
-
-              try {
-                const binaryString = atob(decodedStr.trim());
-                const len = binaryString.length;
-                const jsonBytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                  jsonBytes[i] = binaryString.charCodeAt(i);
-                }
-                return decoder.decode(jsonBytes);
-              } catch {
-                return decodedStr; // Payload might not be base64 wrapped
+            if (type === 'tEXt') {
+              payload = decoder.decode(chunkData.subarray(nul + 1));
+            } else if (type === 'zTXt') {
+              if (chunkData[nul + 1] === 0) {
+                const decompressed = await decompressZlib(chunkData.subarray(nul + 2));
+                payload = decoder.decode(decompressed);
               }
-            } catch (e) {
-              console.error("Failed to decompress zTXt metadata segment:", e);
+            } else {
+              // iTXt: keyword \0 compFlag compMethod langTag \0 transKeyword \0 text
+              const compressionFlag = chunkData[nul + 1];
+              const rest = chunkData.subarray(nul + 3);
+              const langEnd = rest.indexOf(0);
+              const afterLang = langEnd === -1 ? rest : rest.subarray(langEnd + 1);
+              const transEnd = afterLang.indexOf(0);
+              const textBytes = transEnd === -1 ? afterLang : afterLang.subarray(transEnd + 1);
+
+              if (compressionFlag === 1) {
+                const decompressed = await decompressZlib(textBytes);
+                payload = decoder.decode(decompressed);
+              } else {
+                payload = decoder.decode(textBytes);
+              }
             }
+
+            if (payload) {
+              const decoded = decodePayload(payload, decoder);
+              // Prefer v3, but keep looking in case it is unusable.
+              if (keyword === 'ccv3') {
+                try {
+                  JSON.parse(decoded);
+                  return decoded;
+                } catch {
+                  fallback ??= decoded;
+                }
+              } else {
+                try {
+                  JSON.parse(decoded);
+                  fallback ??= decoded;
+                } catch {
+                  fallback ??= decoded;
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to decode ${type} metadata chunk:`, e);
           }
         }
       }
+    } else if (type === 'IEND') {
+      break;
     }
-    pos += 12 + length;
+
+    pos = end;
   }
-  return null;
+
+  return fallback;
 }
 
 /**
@@ -288,31 +411,31 @@ export function generateDefaultBlackPNG(): string {
  * Defends against massive uncompressed Base64 arrays freezing Dexie transactions.
  */
 export async function generateThumbnail(base64: string, maxSize = 128): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          const ratio = Math.min(maxSize / width, maxSize / height);
-          width *= ratio;
-          height *= ratio;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", 0.7));
-        } else {
-          reject(new Error("Failed to construct thumbnail canvas context"));
-        }
-      } catch (err) {
-        reject(new Error("Error generating thumbnail: " + String(err)));
-      }
-    };
-    img.onerror = () => reject(new Error("Browser failed to decode the source image format"));
-    img.src = base64;
-  });
+  const response = await fetch(base64);
+  const source = await loadOrientedImage(await response.blob());
+
+  try {
+    let { width, height } = source as { width: number; height: number };
+    if (width > maxSize || height > maxSize) {
+      const ratio = Math.min(maxSize / width, maxSize / height);
+      width = Math.max(1, Math.round(width * ratio));
+      height = Math.max(1, Math.round(height * ratio));
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Failed to construct thumbnail canvas context");
+
+    // Thumbnails are JPEG, so transparent source pixels need a backdrop.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(source as CanvasImageSource, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.7);
+  } catch (err) {
+    throw new Error("Error generating thumbnail: " + String(err));
+  } finally {
+    if ("close" in source && typeof source.close === "function") source.close();
+  }
 }

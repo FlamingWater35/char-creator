@@ -41,7 +41,7 @@
         <div
           class="relative w-9 h-9 flex items-center justify-center bg-primary rounded-xl shadow-lg group-hover:rotate-6 transition-transform"
         >
-          <img src={icon} alt="" class="w-6 h-6 invert dark:invert-0" />
+          <img src={icon} alt="" class="w-6 h-6" />
         </div>
         <span class="font-black text-xl tracking-tight hidden md:block">
           Char<span class="text-blue-500">Creator</span>
@@ -118,11 +118,3 @@
     {/key}
   </main>
 </div>
-
-<style>
-  @media (max-width: 440px) {
-    .xs\:block {
-      display: none;
-    }
-  }
-</style>

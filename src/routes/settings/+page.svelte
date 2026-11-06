@@ -162,12 +162,13 @@
       const allImages = await db.characterImages.toArray();
       const allAssets = await db.characterAssets.toArray();
 
+      // The API key is deliberately omitted: backups are plain JSON that people
+      // share and sync, and a leaked key is a leaked wallet.
       const backup = {
         app: "char-creator",
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         settings: {
-          apiKey: settings.apiKey,
           model: settings.model,
           temperature: settings.temperature,
           frequencyPenalty: settings.frequencyPenalty,
@@ -175,8 +176,6 @@
           topP: settings.topP,
           maxTokens: settings.maxTokens,
           systemPrompt: settings.systemPrompt,
-          provider: settings.provider,
-          customBaseUrl: settings.customBaseUrl,
           genName: settings.genName,
           genDescription: settings.genDescription,
           genPersonality: settings.genPersonality,
@@ -200,11 +199,28 @@
       const a = document.createElement("a");
       a.href = url;
       a.download = `char_creator_backup_${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      // Revoking synchronously can cancel the download in Firefox and Safari.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (e: any) {
       dialogs.alert("Export failed: " + e.message, "Export Error");
     }
+  }
+
+  /**
+   * True when the payload looks like a Char Creator backup rather than an
+   * unrelated JSON file the user picked by mistake.
+   */
+  function looksLikeBackup(value: any): boolean {
+    return (
+      value &&
+      typeof value === "object" &&
+      (value.app === "char-creator" ||
+        Array.isArray(value.characters) ||
+        (value.settings && typeof value.settings === "object"))
+    );
   }
 
   async function importDatabase(e: Event) {
@@ -224,7 +240,7 @@
       const text = await file.text();
       const backup = JSON.parse(text);
 
-      if (backup.app !== "char-creator") {
+      if (!looksLikeBackup(backup)) {
         const proceedAnyway = await dialogs.confirm(
           "This file does not match Char Creator standards. Attempt import anyway?",
           "Format Warning",
@@ -235,9 +251,37 @@
         }
       }
 
+      // An API key inside a backup file is never trustworthy: it belongs to
+      // whoever produced the file, and applying it silently would hand this
+      // browser's requests (and the user's prompts) to them.
+      const fileCarriesKey =
+        typeof backup.settings?.apiKey === "string" &&
+        backup.settings.apiKey.length > 0;
+
+      // Connection settings are the other half of that attack: a file that sets
+      // provider=custom plus a base URL redirects every later prompt.
+      const incomingProvider = backup.settings?.provider;
+      const incomingBaseUrl = backup.settings?.customBaseUrl;
+      const connectionChanges =
+        (typeof incomingProvider === "string" &&
+          incomingProvider !== settings.provider) ||
+        (typeof incomingBaseUrl === "string" &&
+          incomingBaseUrl !== settings.customBaseUrl);
+
+      let applyConnection = false;
+      if (connectionChanges) {
+        applyConnection = await dialogs.confirm(
+          `This backup wants to switch your API provider to "${incomingProvider ?? settings.provider}"` +
+            (typeof incomingBaseUrl === "string" && incomingBaseUrl
+              ? ` at ${incomingBaseUrl}`
+              : "") +
+            ".\n\nOnly continue if you created this file yourself.",
+          "Provider Change Requested",
+        );
+      }
+
       if (backup.settings) {
         const s = backup.settings;
-        if (typeof s.apiKey === "string") settings.apiKey = s.apiKey;
         if (typeof s.model === "string") settings.model = s.model;
         if (typeof s.temperature === "number")
           settings.temperature = s.temperature;
@@ -249,8 +293,9 @@
         if (typeof s.maxTokens === "number") settings.maxTokens = s.maxTokens;
         if (typeof s.systemPrompt === "string")
           settings.systemPrompt = s.systemPrompt;
-        if (typeof s.provider === "string") settings.provider = s.provider;
-        if (typeof s.customBaseUrl === "string")
+        if (applyConnection && typeof s.provider === "string")
+          settings.provider = s.provider;
+        if (applyConnection && typeof s.customBaseUrl === "string")
           settings.customBaseUrl = s.customBaseUrl;
         if (typeof s.genName === "boolean") settings.genName = s.genName;
         if (typeof s.genDescription === "boolean")
@@ -277,70 +322,103 @@
 
       let importedCount = 0;
       if (Array.isArray(backup.characters)) {
-        for (const char of backup.characters) {
-          if (!char.id || !char.name) continue;
+        const legacyImages: { id: string; image: string }[] = [];
+        const legacyAssets: Record<string, unknown>[] = [];
 
-          let fallbackImage = null;
-          let fallbackAssets = [];
-          if (char.data.image) {
-            fallbackImage = char.data.image;
-            delete char.data.image;
-          }
-          if (char.data.assets) {
-            fallbackAssets = char.data.assets;
-            delete char.data.assets;
-          }
+        // One transaction for the whole restore: a malformed row now rolls back
+        // instead of leaving the database half-populated.
+        await db.transaction(
+          "rw",
+          db.characters,
+          db.characterImages,
+          db.characterAssets,
+          async () => {
+            for (const char of backup.characters) {
+              if (!char?.id || !char?.name) continue;
 
-          const finalChar = {
-            id: char.id,
-            name: char.name,
-            createdAt: char.createdAt ? new Date(char.createdAt) : new Date(),
-            updatedAt: char.updatedAt ? new Date(char.updatedAt) : new Date(),
-            data: {
-              mainPrompt: char.data?.mainPrompt || "",
-              description: char.data?.description || "",
-              personality: char.data?.personality || "",
-              scenario: char.data?.scenario || "",
-              backstory: char.data?.backstory || "",
-              firstMessages: Array.isArray(char.data?.firstMessages)
-                ? char.data.firstMessages
-                : [""],
-              exampleMessages: Array.isArray(char.data?.exampleMessages)
-                ? char.data.exampleMessages
-                : [],
-              thumbnail: char.data?.thumbnail || null,
-              relatedCharacters: char.data?.relatedCharacters || "",
-              characterBook: char.data?.characterBook
-                ? {
-                    name: char.data.characterBook.name || "",
-                    description: char.data.characterBook.description || "",
-                    entries: Array.isArray(char.data.characterBook.entries)
-                      ? char.data.characterBook.entries
-                      : [],
-                  }
-                : { name: "", description: "", entries: [] },
-              worldInfo: char.data?.worldInfo || "",
-            },
-          };
+              // Older backups stored the avatar and assets inline on `data`;
+              // newer ones keep them in their own tables.
+              const data = char.data ?? {};
+              let fallbackImage: string | null = null;
+              let fallbackAssets: Record<string, unknown>[] = [];
+              if (typeof data.image === "string") fallbackImage = data.image;
+              if (Array.isArray(data.assets)) fallbackAssets = data.assets;
 
-          await db.characters.put(finalChar);
-          importedCount++;
+              const finalChar = {
+                id: char.id,
+                name: char.name,
+                createdAt: char.createdAt ? new Date(char.createdAt) : new Date(),
+                updatedAt: char.updatedAt ? new Date(char.updatedAt) : new Date(),
+                data: {
+                  mainPrompt: data.mainPrompt || "",
+                  description: data.description || "",
+                  personality: data.personality || "",
+                  scenario: data.scenario || "",
+                  backstory: data.backstory || "",
+                  firstMessages: Array.isArray(data.firstMessages)
+                    ? data.firstMessages
+                    : [""],
+                  exampleMessages: Array.isArray(data.exampleMessages)
+                    ? data.exampleMessages
+                    : [],
+                  thumbnail: data.thumbnail || null,
+                  relatedCharacters: data.relatedCharacters || "",
+                  characterBook: data.characterBook
+                    ? {
+                        name: data.characterBook.name || "",
+                        description: data.characterBook.description || "",
+                        entries: Array.isArray(data.characterBook.entries)
+                          ? data.characterBook.entries
+                          : [],
+                      }
+                    : { name: "", description: "", entries: [] },
+                  worldInfo: data.worldInfo || "",
+                  // Round-trip payloads from imported cards survive a restore.
+                  cardMeta:
+                    data.cardMeta && typeof data.cardMeta === "object"
+                      ? data.cardMeta
+                      : undefined,
+                },
+              };
 
-          if (fallbackImage) {
-            await db.characterImages.put({ id: char.id, image: fallbackImage });
-          }
-          if (fallbackAssets.length > 0) {
-            for (const asset of fallbackAssets) {
-              await db.characterAssets.put({ ...asset, characterId: char.id });
+              await db.characters.put(finalChar);
+              importedCount++;
+
+              if (fallbackImage) {
+                legacyImages.push({ id: char.id, image: fallbackImage });
+              }
+              for (const asset of fallbackAssets) {
+                legacyAssets.push({ ...asset, characterId: char.id });
+              }
             }
-          }
-        }
 
-        if (Array.isArray(backup.characterImages)) {
-          await db.characterImages.bulkPut(backup.characterImages);
-        }
-        if (Array.isArray(backup.characterAssets)) {
-          await db.characterAssets.bulkPut(backup.characterAssets);
+            if (legacyImages.length > 0)
+              await db.characterImages.bulkPut(legacyImages);
+            if (legacyAssets.length > 0)
+              await db.characterAssets.bulkPut(legacyAssets as any);
+
+            if (Array.isArray(backup.characterImages)) {
+              await db.characterImages.bulkPut(
+                backup.characterImages.filter(
+                  (img: any) => img?.id && typeof img.image === "string",
+                ),
+              );
+            }
+            if (Array.isArray(backup.characterAssets)) {
+              await db.characterAssets.bulkPut(
+                backup.characterAssets.filter(
+                  (asset: any) => asset?.id && asset?.characterId,
+                ),
+              );
+            }
+          },
+        );
+
+        if (fileCarriesKey) {
+          await dialogs.alert(
+            "This backup contained an API key. It was ignored for your safety — enter your own key in the AI Engine section.",
+            "API Key Ignored",
+          );
         }
 
         await dialogs.alert(
@@ -575,7 +653,7 @@
                   aria-label="Close model selector"
                 ></button>
                 <div
-                  class="absolute top-full left-0 w-full z-50 bg-popover border border-border mt-2 rounded-xl shadow-xl overflow-hidden flex flex-col max-h-80 animate-in fade-in slide-in-from-top-2 duration-200"
+                  class="absolute top-full left-0 w-full z-50 bg-popover border border-border mt-2 rounded-xl shadow-xl overflow-hidden flex flex-col max-h-80 animate-drop-in"
                   role="listbox"
                 >
                   <div

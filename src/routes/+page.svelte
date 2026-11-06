@@ -3,7 +3,6 @@
   import {
     db,
     type Character,
-    type ExampleMessage,
     type CharacterBook,
   } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
@@ -23,6 +22,13 @@
     generateThumbnail,
     compressImage,
   } from "$lib/png";
+  import {
+    buildCardMeta,
+    buildBookExtra,
+    buildEntryExtra,
+    extractSection,
+    parseExampleMessages,
+  } from "$lib/card";
 
   let characters = $state<Character[]>([]);
   let searchQuery = $state("");
@@ -119,74 +125,6 @@
     }
   }
 
-  function parseExampleMessages(
-    mesExample: string | undefined | null,
-  ): ExampleMessage[] {
-    if (!mesExample) return [];
-    const examples: ExampleMessage[] = [];
-    try {
-      const blocks = mesExample.split(/<START>/i);
-      for (const block of blocks) {
-        const trimmedBlock = block.trim();
-        if (!trimmedBlock) continue;
-
-        const lines = trimmedBlock.split("\n");
-        let userText = "";
-        let charText = "";
-
-        for (const line of lines) {
-          const lower = line.trim().toLowerCase();
-          if (lower.startsWith("{{user}}:")) {
-            userText = line.substring(line.indexOf(":") + 1).trim();
-          } else if (lower.startsWith("{{char}}:")) {
-            if (charText) charText += "\n";
-            charText += line.substring(line.indexOf(":") + 1).trim();
-          } else {
-            if (charText) {
-              charText += "\n" + line.trim();
-            } else if (userText) {
-              userText += "\n" + line.trim();
-            } else {
-              charText = line.trim();
-            }
-          }
-        }
-
-        if (charText || userText) {
-          examples.push({
-            id: crypto.randomUUID(),
-            user: userText,
-            character: charText,
-          });
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to parse some dialogue examples", e);
-    }
-    return examples;
-  }
-
-  function extractSection(
-    text: string,
-    header: string,
-  ): { content: string; cleanedText: string } {
-    try {
-      const regex = new RegExp(
-        `(?:^|\\n)${header}\\s*:\\s*([\\s\\S]*?)(?=\\n(?:Personality|Scenario|Backstory|Related Characters)\\s*:|$)`,
-        "i",
-      );
-      const match = text.match(regex);
-      if (match) {
-        const content = match[1].trim();
-        const cleanedText = text.replace(match[0], "").trim();
-        return { content, cleanedText };
-      }
-    } catch (e) {
-      console.warn(`Failed to extract section ${header}`, e);
-    }
-    return { content: "", cleanedText: text };
-  }
-
   /**
    * Decodes embedded metadata from PNG imports, configures a character object,
    * compresses the image to prevent quota issues, and transactions it to IndexedDB.
@@ -217,7 +155,7 @@
         );
       }
 
-      const data = parsed.data || parsed;
+      const data = (parsed.data || parsed) as Record<string, any>;
       const name = data.name || "Imported Character";
       let mainPrompt = data.extensions?.char_creator?.mainPrompt || "";
 
@@ -257,7 +195,8 @@
       const base64Image = await compressImage(file, {
         maxWidth: 1024,
         maxHeight: 1024,
-        type: "image/png",
+        type: "image/jpeg",
+        quality: 0.9,
       });
 
       const thumbnail = base64Image
@@ -319,28 +258,48 @@
         entries: [],
       };
       if (data.character_book && typeof data.character_book === "object") {
-        const cb = data.character_book;
+        const cb = data.character_book as Record<string, any>;
         characterBook = {
           name: cb.name || "",
           description: cb.description || "",
+          extra: buildBookExtra(cb),
           entries: Array.isArray(cb.entries)
-            ? cb.entries.map((entry: any) => ({
-                id: crypto.randomUUID(),
-                keys: Array.isArray(entry.keys)
-                  ? entry.keys.map(String)
-                  : typeof entry.keys === "string"
-                    ? [entry.keys]
-                    : [],
-                secondary_keys: Array.isArray(entry.secondary_keys)
-                  ? entry.secondary_keys.map(String)
-                  : [],
-                content: entry.content || "",
-                enabled: entry.enabled !== false,
-                priority:
-                  typeof entry.priority === "number" ? entry.priority : 10,
-                comment: entry.comment || "",
-                constant: entry.constant === true,
-              }))
+            ? cb.entries.map((entry: Record<string, any>) => {
+                // SillyTavern world info uses `key`/`keysecondary`; the card
+                // spec uses `keys`/`secondary_keys`. Accept both.
+                const primary = Array.isArray(entry.keys)
+                  ? entry.keys
+                  : Array.isArray(entry.key)
+                    ? entry.key
+                    : typeof entry.keys === "string"
+                      ? [entry.keys]
+                      : typeof entry.key === "string"
+                        ? [entry.key]
+                        : [];
+
+                const secondary = Array.isArray(entry.secondary_keys)
+                  ? entry.secondary_keys
+                  : Array.isArray(entry.keysecondary)
+                    ? entry.keysecondary
+                    : [];
+
+                return {
+                  id: crypto.randomUUID(),
+                  keys: primary.map(String).filter(Boolean),
+                  secondary_keys: secondary.map(String).filter(Boolean),
+                  content: entry.content || "",
+                  enabled: entry.enabled !== false && entry.disable !== true,
+                  priority:
+                    typeof entry.priority === "number"
+                      ? entry.priority
+                      : typeof entry.order === "number"
+                        ? entry.order
+                        : 10,
+                  comment: entry.comment || "",
+                  constant: entry.constant === true,
+                  extra: buildEntryExtra(entry),
+                };
+              })
             : [],
         };
       }
@@ -370,6 +329,9 @@
           thumbnail,
           characterBook,
           worldInfo,
+          // Unmodelled spec fields (tags, creator, creator_notes, system_prompt,
+          // post_history_instructions, ...) survive until the next export.
+          cardMeta: buildCardMeta(data),
         },
       };
 
