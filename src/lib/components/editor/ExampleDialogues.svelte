@@ -1,24 +1,37 @@
 <script lang="ts">
   import type { ExampleMessage } from "$lib/db";
   import { autoresize } from "$lib/autoresize";
-  import { Plus, Trash2, Sparkles, X } from "@lucide/svelte";
+  import { Plus, Trash2 } from "@lucide/svelte";
+  import AiFieldActions from "./AiFieldActions.svelte";
 
   // Bidirectional runes binding dialogue examples arrays with parent states
   let {
     exampleMessages = $bindable([]),
     generatingAll = false,
     activeGeneratingField = null,
+    activeAction = null,
     onenhance,
+    onregenerate,
+    onundo,
+    undoBuffer = {},
     oncancel,
   }: {
     exampleMessages: ExampleMessage[];
     generatingAll: boolean;
     activeGeneratingField: string | null;
+    activeAction?: "enhance" | "regenerate" | null;
     onenhance: (
       fieldName: string,
       content: string,
       updateCb: (val: string) => void,
     ) => void;
+    onregenerate: (
+      fieldName: string,
+      content: string,
+      updateCb: (val: string) => void,
+    ) => void;
+    onundo: (fieldName: string, updateCb: (val: string) => void) => void;
+    undoBuffer?: Record<string, string>;
     oncancel: () => void;
   } = $props();
 
@@ -37,6 +50,11 @@
    */
   function removeExampleMessage(id: string) {
     exampleMessages = exampleMessages.filter((m) => m.id !== id);
+  }
+
+  /** Field name used for prompts and for the per-field action state. */
+  function fieldNameFor(index: number) {
+    return `Example Message ${index}`;
   }
 </script>
 
@@ -94,38 +112,37 @@
             class="w-full border rounded-md p-3 overflow-hidden bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-sm resize-none min-h-15 disabled:opacity-50"
             placeholder="e.g. Can you teach me magic, Merlin?"
             disabled={generatingAll ||
-              activeGeneratingField === `Example Message ${i}`}
+              activeGeneratingField === fieldNameFor(i)}
           ></textarea>
         </div>
 
         <div>
-          <div class="flex justify-between items-center mb-1">
+          <div class="flex flex-wrap justify-between items-center gap-2 mb-1">
             <label
               for="ex-char-{i}"
               class="text-sm font-semibold text-foreground"
               >Character Response</label
             >
-            {#if activeGeneratingField === `Example Message ${i}`}
-              <button
-                onclick={oncancel}
-                class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer min-h-9"
-                ><X class="w-3.5 h-3.5" /> Cancel</button
-              >
-            {:else}
-              <button
-                onclick={() =>
-                  onenhance(
-                    `Example Message ${i}`,
-                    ex.character,
-                    (v) => (ex.character = v),
-                  )}
-                disabled={generatingAll ||
-                  (activeGeneratingField !== null &&
-                    activeGeneratingField !== `Example Message ${i}`)}
-                class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
-                ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
-              >
-            {/if}
+            <AiFieldActions
+              fieldName={fieldNameFor(i)}
+              value={ex.character}
+              activeField={activeGeneratingField}
+              activeMode={activeAction}
+              busy={generatingAll}
+              size="sm"
+              onenhance={(_name, content) =>
+                onenhance(fieldNameFor(i), content, (v) => (ex.character = v))}
+              onregenerate={(_name, content) =>
+                onregenerate(
+                  fieldNameFor(i),
+                  content,
+                  (v) => (ex.character = v),
+                )}
+              onundo={() =>
+                onundo(fieldNameFor(i), (v) => (ex.character = v))}
+              canUndo={undoBuffer[fieldNameFor(i)] !== undefined}
+              {oncancel}
+            />
           </div>
           <textarea
             id="ex-char-{i}"
@@ -134,7 +151,7 @@
             class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-sm resize-none min-h-25 disabled:opacity-50"
             placeholder="e.g. *Merlin chuckles softly...*"
             disabled={generatingAll ||
-              activeGeneratingField === `Example Message ${i}`}
+              activeGeneratingField === fieldNameFor(i)}
           ></textarea>
         </div>
       </div>

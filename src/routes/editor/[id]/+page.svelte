@@ -14,6 +14,7 @@
     toPngDataUrl,
   } from "$lib/png";
   import { buildCardPayload } from "$lib/card";
+  import { renderPrompt, buildPromptContext } from "$lib/prompts";
   import {
     Sparkles,
     Loader2,
@@ -22,7 +23,6 @@
     Check,
     ImagePlus,
     Download,
-    X,
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
@@ -31,6 +31,7 @@
   import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
   import ExampleDialogues from "$lib/components/editor/ExampleDialogues.svelte";
   import Subfields from "$lib/components/editor/Subfields.svelte";
+  import AiFieldActions from "$lib/components/editor/AiFieldActions.svelte";
 
   let characterId = $derived($page.params.id as string);
 
@@ -52,7 +53,15 @@
   let saveInFlight: Promise<void> | null = null;
 
   let activeGeneratingField = $state<string | null>(null);
+  let activeAction = $state<"enhance" | "regenerate" | null>(null);
   let aiAbortController = $state<AbortController | null>(null);
+
+  /**
+   * Text each field had before its last AI rewrite, keyed by field name.
+   * One slot per field is enough: undo steps back one generation, which is the
+   * only case where a stray keystroke is not recoverable by hand.
+   */
+  let undoBuffer = $state<Record<string, string>>({});
 
   let fileInput = $state<HTMLInputElement>();
 
@@ -362,12 +371,16 @@
       aiAbortController.abort();
       aiAbortController = null;
       activeGeneratingField = null;
+      activeAction = null;
       generatingAll = false;
     }
   }
 
   /**
    * Dispatches generation completion calls to internal route servers.
+   *
+   * The controller is captured locally so a superseded request can never null
+   * out (or read from) the controller belonging to the request that replaced it.
    */
   async function callAI(prompt: string, system?: string) {
     if (!settings.apiKey && settings.provider !== "custom") {
@@ -378,14 +391,17 @@
       return null;
     }
 
-    cancelGeneration();
-    aiAbortController = new AbortController();
+    // Supersede any in-flight request without touching the caller's UI state:
+    // the caller has just marked its own field as the active one.
+    aiAbortController?.abort();
+    const controller = new AbortController();
+    aiAbortController = controller;
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: aiAbortController.signal,
+        signal: controller.signal,
         body: JSON.stringify({
           prompt,
           system,
@@ -413,8 +429,7 @@
       const data = await res.json();
       return data.result;
     } catch (e: any) {
-      if (e.name === "AbortError" || aiAbortController.signal.aborted)
-        return null;
+      if (e.name === "AbortError" || controller.signal.aborted) return null;
       console.error("AI fetch failed:", e);
       dialogs.alert(
         "Network connection error: Failed to communicate with the model server.",
@@ -422,26 +437,105 @@
       );
       return null;
     } finally {
-      aiAbortController = null;
+      if (aiAbortController === controller) aiAbortController = null;
     }
   }
 
   /**
-   * Refines a specific textarea description parameter using AI completion.
+   * Builds the prompt for a single-field action from the user-editable
+   * template in Settings → Advanced, then dispatches the completion.
+   *
+   * `mode` selects which template is used; everything else is shared so the two
+   * buttons can never drift apart.
+   */
+  async function runFieldAction(
+    mode: "enhance" | "regenerate",
+    fieldName: string,
+    currentContent: string,
+    updateCb: (val: string) => void,
+  ) {
+    if (!character) return;
+
+    const template =
+      mode === "enhance"
+        ? settings.enhancePrompt
+        : settings.regeneratePrompt;
+
+    const prompt = renderPrompt(template, {
+      concept: character.data.mainPrompt,
+      field: fieldName,
+      content: currentContent,
+      context: buildPromptContext(character, fieldName),
+    });
+
+    activeGeneratingField = fieldName;
+    activeAction = mode;
+
+    const result = await callAI(prompt, settings.systemPrompt);
+    if (result) {
+      // Only remember a rewrite of text the user had, not a first generation:
+      // undoing into an empty box is not what "undo" should mean.
+      if (currentContent.trim()) undoBuffer[fieldName] = currentContent;
+      updateCb(result.trim());
+    }
+
+    if (activeGeneratingField === fieldName) {
+      activeGeneratingField = null;
+      activeAction = null;
+    }
+  }
+
+  /**
+   * Rewrites a field using its current text as the starting point.
    */
   async function enhanceField(
     fieldName: string,
     currentContent: string,
     updateCb: (val: string) => void,
   ) {
-    if (!character) return;
-    activeGeneratingField = fieldName;
-    const prompt = `You are an expert roleplay character creator.\nThe main concept for this character is: ${character.data.mainPrompt}\n\nPlease expand, refine, and improve the following field [${fieldName}]:\n${currentContent || "(No content yet)"}\n\nRespond ONLY with the improved content. Do not include any meta-commentary or explanations. Keep the tone appropriate for character definitions.`;
+    return runFieldAction("enhance", fieldName, currentContent, updateCb);
+  }
 
-    const result = await callAI(prompt, settings.systemPrompt);
-    if (result) updateCb(result.trim());
+  /**
+   * Writes a field from scratch, ignoring whatever is currently in it.
+   */
+  async function regenerateField(
+    fieldName: string,
+    currentContent: string,
+    updateCb: (val: string) => void,
+  ) {
+    return runFieldAction("regenerate", fieldName, currentContent, updateCb);
+  }
 
-    if (activeGeneratingField === fieldName) activeGeneratingField = null;
+  /**
+   * Restores the text a field had before its last AI rewrite.
+   */
+  function undoField(fieldName: string, updateCb: (val: string) => void) {
+    const previous = undoBuffer[fieldName];
+    if (previous === undefined) return;
+    updateCb(previous);
+    delete undoBuffer[fieldName];
+  }
+
+  /**
+   * Bindings for one field, so a section only has to name itself.
+   *
+   * `apply` writes into the character sheet; the callbacks return to the
+   * template so markup stays declarative.
+   */
+  function fieldBinding(fieldName: string, current: string, apply: (v: string) => void) {
+    return {
+      fieldName,
+      value: current,
+      activeMode: activeAction,
+      onenhance: (_name: string, content: string) =>
+        void enhanceField(fieldName, content, apply),
+      onregenerate: (_name: string, content: string) =>
+        void regenerateField(fieldName, content, apply),
+      oncancel: cancelGeneration,
+      onundo: () => undoField(fieldName, apply),
+      canUndo: undoBuffer[fieldName] !== undefined,
+    };
   }
 
   /**
@@ -883,35 +977,23 @@
         <div class="space-y-8">
           <div class="space-y-3">
             <div
-              class="flex justify-between items-center border-b border-border pb-2"
+              class="flex flex-wrap justify-between items-center gap-3 border-b border-border pb-2"
             >
-              <div>
+              <div class="min-w-0">
                 <h3 class="text-2xl font-bold">Description</h3>
                 <p class="text-sm text-muted-foreground">
                   Main overview of the character's appearance and general vibe.
                 </p>
               </div>
-              {#if activeGeneratingField === "Description"}
-                <button
-                  onclick={cancelGeneration}
-                  class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer"
-                  ><X class="w-4 h-4" /> Cancel</button
-                >
-              {:else}
-                <button
-                  onclick={() =>
-                    enhanceField(
-                      "Description",
-                      character!.data.description,
-                      (v) => (character!.data.description = v),
-                    )}
-                  disabled={generatingAll ||
-                    (activeGeneratingField !== null &&
-                      activeGeneratingField !== "Description")}
-                  class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  ><Sparkles class="w-4 h-4" /> Enhance</button
-                >
-              {/if}
+              <AiFieldActions
+                {...fieldBinding(
+                  "Description",
+                  character.data.description,
+                  (v) => (character!.data.description = v),
+                )}
+                activeField={activeGeneratingField}
+                busy={generatingAll}
+              />
             </div>
             <textarea
               use:autoresize={character.data.description}
@@ -927,7 +1009,11 @@
             bind:firstMessages={character.data.firstMessages}
             {generatingAll}
             {activeGeneratingField}
+            {activeAction}
             onenhance={enhanceField}
+            onregenerate={regenerateField}
+            onundo={undoField}
+            undoBuffer={undoBuffer}
             oncancel={cancelGeneration}
           />
 
@@ -935,7 +1021,11 @@
             bind:exampleMessages={character.data.exampleMessages}
             {generatingAll}
             {activeGeneratingField}
+            {activeAction}
             onenhance={enhanceField}
+            onregenerate={regenerateField}
+            onundo={undoField}
+            undoBuffer={undoBuffer}
             oncancel={cancelGeneration}
           />
         </div>
@@ -947,7 +1037,11 @@
           bind:relatedCharacters={character.data.relatedCharacters}
           {generatingAll}
           {activeGeneratingField}
+          {activeAction}
           onenhance={enhanceField}
+          onregenerate={regenerateField}
+          onundo={undoField}
+          undoBuffer={undoBuffer}
           oncancel={cancelGeneration}
         />
 

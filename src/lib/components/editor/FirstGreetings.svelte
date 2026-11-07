@@ -1,23 +1,36 @@
 <script lang="ts">
   import { autoresize } from "$lib/autoresize";
-  import { Plus, Trash2, Sparkles, X } from "@lucide/svelte";
+  import { Plus, Trash2 } from "@lucide/svelte";
+  import AiFieldActions from "./AiFieldActions.svelte";
 
   // Bidirectional runes binding alternate greetings arrays with parent states
   let {
     firstMessages = $bindable([""]),
     generatingAll = false,
     activeGeneratingField = null,
+    activeAction = null,
     onenhance,
+    onregenerate,
+    onundo,
+    undoBuffer = {},
     oncancel,
   }: {
     firstMessages: string[];
     generatingAll: boolean;
     activeGeneratingField: string | null;
+    activeAction?: "enhance" | "regenerate" | null;
     onenhance: (
       fieldName: string,
       content: string,
       updateCb: (val: string) => void,
     ) => void;
+    onregenerate: (
+      fieldName: string,
+      content: string,
+      updateCb: (val: string) => void,
+    ) => void;
+    onundo: (fieldName: string, updateCb: (val: string) => void) => void;
+    undoBuffer?: Record<string, string>;
     oncancel: () => void;
   } = $props();
 
@@ -33,6 +46,11 @@
    */
   function removeFirstMessage(index: number) {
     firstMessages = firstMessages.filter((_, i) => i !== index);
+  }
+
+  /** Field name used for prompts and for the per-field action state. */
+  function fieldNameFor(index: number) {
+    return `First Message ${index}`;
   }
 </script>
 
@@ -58,34 +76,33 @@
   <div class="space-y-6">
     {#each firstMessages as msg, i}
       <div class="bg-card border rounded-lg p-4 shadow-sm relative group">
-        <div class="flex justify-between items-center mb-3">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
           <label
             for="first-msg-{i}"
             class="font-semibold text-xs sm:text-sm uppercase tracking-wide text-muted-foreground"
             >{i === 0 ? "Main Greeting" : `Alternative ${i}`}</label
           >
           <div class="flex items-center gap-2">
-            {#if activeGeneratingField === `First Message ${i}`}
-              <button
-                onclick={oncancel}
-                class="flex items-center gap-1.5 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-2.5 py-1.5 rounded-md text-xs font-medium shadow-sm transition-colors cursor-pointer min-h-9 sm:min-h-0"
-                ><X class="w-3.5 h-3.5" /> Cancel</button
-              >
-            {:else}
-              <button
-                onclick={() =>
-                  onenhance(
-                    `First Message ${i}`,
-                    msg,
-                    (v) => (firstMessages[i] = v),
-                  )}
-                disabled={generatingAll ||
-                  (activeGeneratingField !== null &&
-                    activeGeneratingField !== `First Message ${i}`)}
-                class="flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9 sm:min-h-0"
-                ><Sparkles class="w-3.5 h-3.5" /> Enhance</button
-              >
-            {/if}
+            <AiFieldActions
+              fieldName={fieldNameFor(i)}
+              value={msg}
+              activeField={activeGeneratingField}
+              activeMode={activeAction}
+              busy={generatingAll}
+              size="sm"
+              onenhance={(_name, content) =>
+                onenhance(fieldNameFor(i), content, (v) => (firstMessages[i] = v))}
+              onregenerate={(_name, content) =>
+                onregenerate(
+                  fieldNameFor(i),
+                  content,
+                  (v) => (firstMessages[i] = v),
+                )}
+              onundo={() =>
+                onundo(fieldNameFor(i), (v) => (firstMessages[i] = v))}
+              canUndo={undoBuffer[fieldNameFor(i)] !== undefined}
+              {oncancel}
+            />
             {#if i > 0}
               <button
                 onclick={() => removeFirstMessage(i)}
@@ -103,7 +120,7 @@
           bind:value={firstMessages[i]}
           class="w-full border rounded-md p-3 overflow-hidden bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 text-base sm:text-sm"
           disabled={generatingAll ||
-            activeGeneratingField === `First Message ${i}`}
+            activeGeneratingField === fieldNameFor(i)}
         ></textarea>
       </div>
     {/each}

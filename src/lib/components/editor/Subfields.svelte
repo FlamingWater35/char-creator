@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { autoresize } from "$lib/autoresize";
-  import { Sparkles, X } from "@lucide/svelte";
+  import SubfieldSection from "./SubfieldSection.svelte";
 
   // Binds optional metadata text variables directly to top-level editor states
   let {
@@ -10,7 +9,11 @@
     relatedCharacters = $bindable(""),
     generatingAll = false,
     activeGeneratingField = null,
+    activeAction = null,
     onenhance,
+    onregenerate,
+    onundo,
+    undoBuffer = {},
     oncancel,
   }: {
     personality: string;
@@ -19,11 +22,19 @@
     relatedCharacters: string;
     generatingAll: boolean;
     activeGeneratingField: string | null;
+    activeAction?: "enhance" | "regenerate" | null;
     onenhance: (
       fieldName: string,
       content: string,
       updateCb: (val: string) => void,
     ) => void;
+    onregenerate: (
+      fieldName: string,
+      content: string,
+      updateCb: (val: string) => void,
+    ) => void;
+    onundo: (fieldName: string, updateCb: (val: string) => void) => void;
+    undoBuffer?: Record<string, string>;
     oncancel: () => void;
   } = $props();
 </script>
@@ -35,138 +46,65 @@
     Optional Subfields
   </h3>
 
-  <!-- Personality Definition Card -->
-  <div class="space-y-3">
-    <div class="flex justify-between items-center">
-      <label for="sub-personality" class="font-semibold text-lg"
-        >Personality</label
-      >
-      {#if activeGeneratingField === "Personality"}
-        <button
-          onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
-          ><X class="w-4 h-4" /> Cancel</button
-        >
-      {:else}
-        <button
-          onclick={() =>
-            onenhance("Personality", personality, (v) => (personality = v))}
-          disabled={generatingAll ||
-            (activeGeneratingField !== null &&
-              activeGeneratingField !== "Personality")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
-          ><Sparkles class="w-4 h-4" /> Enhance</button
-        >
-      {/if}
-    </div>
-    <textarea
-      id="sub-personality"
-      use:autoresize={personality}
-      bind:value={personality}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 text-base sm:text-sm"
-      placeholder="e.g. Wise, patient, speaks in deliberate medieval riddles..."
-      disabled={generatingAll || activeGeneratingField === "Personality"}
-    ></textarea>
-  </div>
+  <SubfieldSection
+    bind:value={personality}
+    label="Personality"
+    id="sub-personality"
+    placeholder="e.g. Wise, patient, speaks in deliberate medieval riddles..."
+    {generatingAll}
+    {activeGeneratingField}
+    {activeAction}
+    canUndo={undoBuffer["Personality"] !== undefined}
+    {onenhance}
+    {onregenerate}
+    {onundo}
+    {oncancel}
+  />
 
-  <!-- Scenario Setup Card -->
-  <div class="space-y-3">
-    <div class="flex justify-between items-center">
-      <label for="sub-scenario" class="font-semibold text-lg">Scenario</label>
-      {#if activeGeneratingField === "Scenario"}
-        <button
-          onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
-          ><X class="w-4 h-4" /> Cancel</button
-        >
-      {:else}
-        <button
-          onclick={() => onenhance("Scenario", scenario, (v) => (scenario = v))}
-          disabled={generatingAll ||
-            (activeGeneratingField !== null &&
-              activeGeneratingField !== "Scenario")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
-          ><Sparkles class="w-4 h-4" /> Enhance</button
-        >
-      {/if}
-    </div>
-    <textarea
-      id="sub-scenario"
-      use:autoresize={scenario}
-      bind:value={scenario}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-25 disabled:opacity-50 text-base sm:text-sm"
-      placeholder="e.g. The user discovers Merlin's ancient stone tower..."
-      disabled={generatingAll || activeGeneratingField === "Scenario"}
-    ></textarea>
-  </div>
+  <SubfieldSection
+    bind:value={scenario}
+    label="Scenario"
+    id="sub-scenario"
+    placeholder="e.g. The user discovers Merlin's ancient stone tower..."
+    {generatingAll}
+    {activeGeneratingField}
+    {activeAction}
+    canUndo={undoBuffer["Scenario"] !== undefined}
+    {onenhance}
+    {onregenerate}
+    {onundo}
+    {oncancel}
+  />
 
-  <!-- Backstory Biography Card -->
-  <div class="space-y-3">
-    <div class="flex justify-between items-center">
-      <label for="sub-backstory" class="font-semibold text-lg">Backstory</label>
-      {#if activeGeneratingField === "Backstory"}
-        <button
-          onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
-          ><X class="w-4 h-4" /> Cancel</button
-        >
-      {:else}
-        <button
-          onclick={() =>
-            onenhance("Backstory", backstory, (v) => (backstory = v))}
-          disabled={generatingAll ||
-            (activeGeneratingField !== null &&
-              activeGeneratingField !== "Backstory")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
-          ><Sparkles class="w-4 h-4" /> Enhance</button
-        >
-      {/if}
-    </div>
-    <textarea
-      id="sub-backstory"
-      use:autoresize={backstory}
-      bind:value={backstory}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 text-base sm:text-sm"
-      placeholder="e.g. Born of a mortal mother and an incubus..."
-      disabled={generatingAll || activeGeneratingField === "Backstory"}
-    ></textarea>
-  </div>
+  <SubfieldSection
+    bind:value={backstory}
+    label="Backstory"
+    id="sub-backstory"
+    minHeight="min-h-30"
+    placeholder="e.g. Born of a mortal mother and an incubus..."
+    {generatingAll}
+    {activeGeneratingField}
+    {activeAction}
+    canUndo={undoBuffer["Backstory"] !== undefined}
+    {onenhance}
+    {onregenerate}
+    {onundo}
+    {oncancel}
+  />
 
-  <!-- Associated Related Characters Card -->
-  <div class="space-y-3">
-    <div class="flex justify-between items-center">
-      <label for="sub-relatedCharacters" class="font-semibold text-lg"
-        >Related Characters</label
-      >
-      {#if activeGeneratingField === "Related Characters"}
-        <button
-          onclick={oncancel}
-          class="flex items-center gap-2 bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition-colors cursor-pointer min-h-9"
-          ><X class="w-4 h-4" /> Cancel</button
-        >
-      {:else}
-        <button
-          onclick={() =>
-            onenhance(
-              "Related Characters",
-              relatedCharacters,
-              (v) => (relatedCharacters = v),
-            )}
-          disabled={generatingAll ||
-            (activeGeneratingField !== null &&
-              activeGeneratingField !== "Related Characters")}
-          class="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md text-sm font-medium border border-border shadow-sm transition-colors cursor-pointer disabled:opacity-50 min-h-9"
-          ><Sparkles class="w-4 h-4" /> Enhance</button
-        >
-      {/if}
-    </div>
-    <textarea
-      id="sub-relatedCharacters"
-      use:autoresize={relatedCharacters}
-      bind:value={relatedCharacters}
-      class="w-full border rounded-md p-4 overflow-hidden bg-card focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none min-h-30 disabled:opacity-50 text-base sm:text-sm"
-      placeholder="e.g. King Arthur (Mentee / Sovereign), Nimue (Lady of the Lake / Companion)..."
-      disabled={generatingAll || activeGeneratingField === "Related Characters"}
-    ></textarea>
-  </div>
+  <SubfieldSection
+    bind:value={relatedCharacters}
+    label="Related Characters"
+    id="sub-relatedCharacters"
+    minHeight="min-h-30"
+    placeholder="e.g. King Arthur (Mentee / Sovereign), Nimue (Lady of the Lake / Companion)..."
+    {generatingAll}
+    {activeGeneratingField}
+    {activeAction}
+    canUndo={undoBuffer["Related Characters"] !== undefined}
+    {onenhance}
+    {onregenerate}
+    {onundo}
+    {oncancel}
+  />
 </div>

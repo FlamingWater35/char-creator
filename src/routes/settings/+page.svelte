@@ -2,6 +2,14 @@
   import { settings } from "$lib/settings.svelte";
   import { db } from "$lib/db";
   import { dialogs } from "$lib/dialogs.svelte";
+  import PromptTemplateEditor from "$lib/components/settings/PromptTemplateEditor.svelte";
+  import {
+    DEFAULT_ENHANCE_PROMPT,
+    DEFAULT_REGENERATE_PROMPT,
+    PROMPT_PLACEHOLDERS,
+    isPromptCustomized,
+    renderPrompt,
+  } from "$lib/prompts";
   import { onMount } from "svelte";
   import {
     Loader2,
@@ -18,6 +26,8 @@
     FileUp,
     Trash2,
     RotateCcw,
+    WandSparkles,
+    CircleHelp,
   } from "@lucide/svelte";
   import { setMode, resetMode } from "mode-watcher";
   import { slide } from "svelte/transition";
@@ -31,6 +41,46 @@
 
   let showApiKey = $state(false);
   let advancedOpen = $state(false);
+  let promptsOpen = $state(false);
+
+  /**
+   * Sample variables for the prompt preview, so the user can see the rendered
+   * result without opening a character.
+   */
+  const PREVIEW_VARS = {
+    concept: "Merlin is an ancient wizard who teaches magic in his forest tower.",
+    field: "Description",
+    content: "An old man in blue robes who lives in a tower.",
+    context:
+      "Name: Merlin\nPersonality: Patient, cryptic, quietly amused by mortal haste.",
+  };
+
+  let enhancePreview = $derived(
+    renderPrompt(settings.enhancePrompt, PREVIEW_VARS),
+  );
+  let regeneratePreview = $derived(
+    renderPrompt(settings.regeneratePrompt, PREVIEW_VARS),
+  );
+
+  let enhanceCustomized = $derived(
+    isPromptCustomized(settings.enhancePrompt, DEFAULT_ENHANCE_PROMPT),
+  );
+  let regenerateCustomized = $derived(
+    isPromptCustomized(settings.regeneratePrompt, DEFAULT_REGENERATE_PROMPT),
+  );
+
+  /**
+   * Placeholders each template actually uses, so the settings page can warn
+   * about a template that never mentions `{concept}` (usually a mistake).
+   */
+  function usedTokens(template: string): string[] {
+    return PROMPT_PLACEHOLDERS.filter((p) => template.includes(p.token)).map(
+      (p) => p.token,
+    );
+  }
+
+  let enhanceTokens = $derived(usedTokens(settings.enhancePrompt));
+  let regenerateTokens = $derived(usedTokens(settings.regeneratePrompt));
 
   let fileInputImportDB = $state<HTMLInputElement>();
   let autosaveStatus = $state("Synced");
@@ -75,6 +125,8 @@
       topP: settings.topP,
       maxTokens: settings.maxTokens,
       systemPrompt: settings.systemPrompt,
+      enhancePrompt: settings.enhancePrompt,
+      regeneratePrompt: settings.regeneratePrompt,
       provider: settings.provider,
       customBaseUrl: settings.customBaseUrl,
       genName: settings.genName,
@@ -176,6 +228,8 @@
           topP: settings.topP,
           maxTokens: settings.maxTokens,
           systemPrompt: settings.systemPrompt,
+          enhancePrompt: settings.enhancePrompt,
+          regeneratePrompt: settings.regeneratePrompt,
           genName: settings.genName,
           genDescription: settings.genDescription,
           genPersonality: settings.genPersonality,
@@ -293,6 +347,10 @@
         if (typeof s.maxTokens === "number") settings.maxTokens = s.maxTokens;
         if (typeof s.systemPrompt === "string")
           settings.systemPrompt = s.systemPrompt;
+        if (typeof s.enhancePrompt === "string")
+          settings.enhancePrompt = s.enhancePrompt;
+        if (typeof s.regeneratePrompt === "string")
+          settings.regeneratePrompt = s.regeneratePrompt;
         if (applyConnection && typeof s.provider === "string")
           settings.provider = s.provider;
         if (applyConnection && typeof s.customBaseUrl === "string")
@@ -820,6 +878,103 @@
                   class="w-full border rounded-xl px-4 py-3 bg-background text-base sm:text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none resize-y min-h-95 leading-relaxed"
                   placeholder="System prompt instructions..."
                 ></textarea>
+              </div>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Per-field action prompts: Enhance / Regenerate -->
+        <div class="bg-secondary/30 rounded-xl px-4 py-2">
+          <button
+            type="button"
+            aria-expanded={promptsOpen}
+            aria-controls="action-prompts-panel"
+            onclick={() => (promptsOpen = !promptsOpen)}
+            class="w-full flex items-center justify-between gap-3 py-3 font-bold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span class="flex items-center gap-2">
+              <WandSparkles class="w-4 h-4" />
+              FIELD ACTION PROMPTS (ENHANCE / REGENERATE)
+              {#if enhanceCustomized || regenerateCustomized}
+                <span
+                  class="bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                  >Customized</span
+                >
+              {/if}
+            </span>
+            {#if promptsOpen}
+              <ChevronUp class="w-4 h-4" />
+            {:else}
+              <ChevronDown class="w-4 h-4" />
+            {/if}
+          </button>
+
+          {#if promptsOpen}
+            <div
+              id="action-prompts-panel"
+              transition:slide
+              class="space-y-6 pb-4 pt-2"
+            >
+              <div
+                class="flex items-start gap-2 text-[11px] text-muted-foreground bg-background/60 border rounded-lg p-3 leading-relaxed"
+              >
+                <CircleHelp class="w-4 h-4 shrink-0 mt-0.5" />
+                <div class="space-y-1.5">
+                  <p>
+                    These templates drive the <strong>Enhance</strong> and
+                    <strong>Regenerate</strong> buttons next to every field in
+                    the editor. <strong>Enhance</strong> rewrites the current
+                    text; <strong>Regenerate</strong> writes the field from
+                    scratch. Changes apply to the next click — no restart
+                    needed.
+                  </p>
+                  <p class="flex flex-wrap gap-x-3 gap-y-1">
+                    {#each PROMPT_PLACEHOLDERS as placeholder (placeholder.token)}
+                      <span class="inline-flex items-center gap-1">
+                        <code
+                          class="bg-muted px-1.5 py-0.5 rounded font-mono text-[10px]"
+                          >{placeholder.token}</code
+                        >
+                        <span class="text-[10px]">{placeholder.description}</span
+                        >
+                      </span>
+                    {/each}
+                  </p>
+                </div>
+              </div>
+
+              <PromptTemplateEditor
+                bind:value={settings.enhancePrompt}
+                label="Enhance Prompt"
+                id="prompt-enhance"
+                description="Refines the field text that is already there. Include the content placeholder to send the current draft to the model."
+                customized={enhanceCustomized}
+                preview={enhancePreview}
+                usedPlaceholders={enhanceTokens}
+                warnMissingConcept={!enhanceTokens.includes("{concept}")}
+                onreset={() => (settings.enhancePrompt = DEFAULT_ENHANCE_PROMPT)}
+              />
+
+              <PromptTemplateEditor
+                bind:value={settings.regeneratePrompt}
+                label="Regenerate Prompt"
+                id="prompt-regenerate"
+                description="Writes the field from scratch. The current text is deliberately not sent, so a weak draft cannot anchor the result."
+                customized={regenerateCustomized}
+                preview={regeneratePreview}
+                usedPlaceholders={regenerateTokens}
+                warnMissingConcept={!regenerateTokens.includes("{concept}")}
+                onreset={() => (settings.regeneratePrompt = DEFAULT_REGENERATE_PROMPT)}
+              />
+              <div class="flex justify-end pt-2 border-t border-border/30">
+                <button
+                  type="button"
+                  onclick={() => settings.resetActionPrompts()}
+                  disabled={!enhanceCustomized && !regenerateCustomized}
+                  class="flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground border rounded-lg px-3 py-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw class="w-3.5 h-3.5" /> Reset both to defaults
+                </button>
               </div>
             </div>
           {/if}

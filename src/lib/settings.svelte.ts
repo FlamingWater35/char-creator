@@ -1,3 +1,8 @@
+import {
+  DEFAULT_ENHANCE_PROMPT,
+  DEFAULT_REGENERATE_PROMPT,
+} from './prompts';
+
 /**
  * Factory-default base instructions designed to guide modern LLMs to generate
  * highly nuanced, structurally stable, and organic three-dimensional characters.
@@ -25,6 +30,10 @@ class Settings {
   topP = $state(1.0);
   maxTokens = $state(8192);
   systemPrompt = $state('');
+
+  // Per-field action prompts (Settings → Advanced). Empty means "use default".
+  enhancePrompt = $state('');
+  regeneratePrompt = $state('');
 
   // Provider configuration
   provider = $state('openrouter');
@@ -64,6 +73,8 @@ class Settings {
         this.topP = parseFloat(localStorage.getItem('or_top_p') || '1.0');
         this.maxTokens = parseInt(localStorage.getItem('or_max_tokens') || '8192', 10);
         this.systemPrompt = localStorage.getItem('or_system_prompt') || DEFAULT_SYSTEM_PROMPT;
+        this.enhancePrompt = localStorage.getItem('or_enhance_prompt') || DEFAULT_ENHANCE_PROMPT;
+        this.regeneratePrompt = localStorage.getItem('or_regenerate_prompt') || DEFAULT_REGENERATE_PROMPT;
 
         this.provider = localStorage.getItem('or_provider') || 'openrouter';
         this.customBaseUrl = localStorage.getItem('or_custom_url') || '';
@@ -100,6 +111,8 @@ class Settings {
         localStorage.setItem('or_top_p', this.topP.toString());
         localStorage.setItem('or_max_tokens', this.maxTokens.toString());
         localStorage.setItem('or_system_prompt', this.systemPrompt);
+        localStorage.setItem('or_enhance_prompt', this.enhancePrompt);
+        localStorage.setItem('or_regenerate_prompt', this.regeneratePrompt);
 
         localStorage.setItem('or_provider', this.provider);
         localStorage.setItem('or_custom_url', this.customBaseUrl);
@@ -130,6 +143,15 @@ class Settings {
   }
 
   /**
+   * Restores the per-field action prompts to their factory wording.
+   */
+  resetActionPrompts() {
+    this.enhancePrompt = DEFAULT_ENHANCE_PROMPT;
+    this.regeneratePrompt = DEFAULT_REGENERATE_PROMPT;
+    this.save();
+  }
+
+  /**
    * Restores settings to their original factory defaults.
    */
   resetToDefaults() {
@@ -141,6 +163,8 @@ class Settings {
     this.topP = 1.0;
     this.maxTokens = 8192;
     this.systemPrompt = DEFAULT_SYSTEM_PROMPT;
+    this.enhancePrompt = DEFAULT_ENHANCE_PROMPT;
+    this.regeneratePrompt = DEFAULT_REGENERATE_PROMPT;
     this.provider = 'openrouter';
     this.customBaseUrl = '';
     this.genName = true;
