@@ -1,8 +1,8 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { resolveEndpoint, redactSecrets } from '$lib/server/providers';
-import { stripReasoning } from '$lib/reasoning';
+import { resolveEndpoint, redactSecrets } from '#lib/server/providers';
+import { stripReasoning } from '#lib/reasoning';
 
 /**
  * Handles server-side completion requests from connected LLM Providers.

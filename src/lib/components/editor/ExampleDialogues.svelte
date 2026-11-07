@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ExampleMessage } from "$lib/db";
-  import { autoresize } from "$lib/autoresize";
+  import type { ExampleMessage } from "#lib/db";
+  import { autoresize } from "#lib/autoresize";
   import { Plus, Trash2 } from "@lucide/svelte";
   import AiFieldActions from "./AiFieldActions.svelte";
 

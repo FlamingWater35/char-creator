@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { settings } from "$lib/settings.svelte";
-  import { db } from "$lib/db";
-  import { dialogs } from "$lib/dialogs.svelte";
-  import PromptTemplateEditor from "$lib/components/settings/PromptTemplateEditor.svelte";
+  import { settings } from "#lib/settings.svelte";
+  import { db } from "#lib/db";
+  import { dialogs } from "#lib/dialogs.svelte";
+  import PromptTemplateEditor from "#lib/components/settings/PromptTemplateEditor.svelte";
   import {
     DEFAULT_ENHANCE_PROMPT,
     DEFAULT_REGENERATE_PROMPT,
     PROMPT_PLACEHOLDERS,
     isPromptCustomized,
     renderPrompt,
-  } from "$lib/prompts";
+  } from "#lib/prompts";
   import { onMount } from "svelte";
   import {
     Loader2,

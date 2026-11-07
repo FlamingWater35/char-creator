@@ -93,10 +93,25 @@ const seed = () =>
 		localStorage.setItem('or_key', 'test-key');
 		localStorage.removeItem('or_enhance_prompt');
 		localStorage.removeItem('or_regenerate_prompt');
-		const open = indexedDB.open('CharCreatorDB');
-		const db = await new Promise((res) => {
-			open.onsuccess = () => res(open.result);
-		});
+
+		// The app creates the schema through Dexie on mount. Opening the database
+		// here first would create an empty version 1 and race that upgrade, so
+		// poll until the `characters` store actually exists.
+		const openDb = async () => {
+			for (let attempt = 0; attempt < 60; attempt++) {
+				const db = await new Promise((res, rej) => {
+					const req = indexedDB.open('CharCreatorDB');
+					req.onsuccess = () => res(req.result);
+					req.onerror = () => rej(req.error);
+				});
+				if (db.objectStoreNames.contains('characters')) return db;
+				db.close();
+				await new Promise((r) => setTimeout(r, 100));
+			}
+			throw new Error('CharCreatorDB never finished initialising');
+		};
+
+		const db = await openDb();
 		const tx = db.transaction('characters', 'readwrite');
 		tx.objectStore('characters').put({
 			id: 'browser-1',

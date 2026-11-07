@@ -1,4 +1,8 @@
-import { env } from '$env/dynamic/private';
+import {
+	CHAR_CREATOR_ALLOWED_HOSTS,
+	CHAR_CREATOR_ALLOW_CUSTOM_PROVIDER,
+	NODE_ENV
+} from '$app/env/private';
 
 /**
  * Known hosted providers and their OpenAI-compatible base endpoints.
@@ -34,7 +38,7 @@ const BLOCKED_HOSTNAMES = new Set([
  * Parses a comma-separated allowlist from the environment.
  */
 function readHostAllowlist(): string[] {
-	return (env.CHAR_CREATOR_ALLOWED_HOSTS || '')
+	return (CHAR_CREATOR_ALLOWED_HOSTS || '')
 		.split(',')
 		.map((entry) => entry.trim().toLowerCase())
 		.filter(Boolean);
@@ -44,9 +48,9 @@ function readHostAllowlist(): string[] {
  * True when the deployment has explicitly opted in to proxying arbitrary hosts.
  */
 export function customProviderEnabled(): boolean {
-	if (env.CHAR_CREATOR_ALLOW_CUSTOM_PROVIDER === '1') return true;
+	if (CHAR_CREATOR_ALLOW_CUSTOM_PROVIDER === '1') return true;
 	// Local development and self-hosted `npm run preview` are always allowed.
-	return env.NODE_ENV !== 'production';
+	return NODE_ENV !== 'production';
 }
 
 /**

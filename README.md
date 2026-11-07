@@ -4,8 +4,6 @@ A local-first character card studio for roleplay: build structured character
 sheets with AI assistance, store everything in the browser, and export
 spec-compliant Character Card V2/V3 PNGs.
 
-![Dashboard](docs/screenshots/dashboard-grid.png)
-
 ## Features
 
 - **AI-assisted authoring** — generate a whole sheet from a concept, or refine a
@@ -30,7 +28,7 @@ spec-compliant Character Card V2/V3 PNGs.
 
 ## Tech stack
 
-- [SvelteKit](https://kit.svelte.dev/) 2 + Svelte 5 (runes)
+- [SvelteKit](https://svelte.dev/docs/kit) 3 + Svelte 5 (runes)
 - [Tailwind CSS](https://tailwindcss.com/) v4
 - [Dexie.js](https://dexie.org/) for IndexedDB
 - [OpenAI SDK](https://github.com/openai/openai-node) for provider calls
@@ -57,8 +55,7 @@ npm run preview   # serve the build
 The tests cover the pieces most likely to break silently: PNG card-metadata
 chunk handling (`tests/png.test.ts`), card spec mapping and round-trip fidelity
 (`tests/card.test.ts`), reasoning-tag stripping (`tests/reasoning.test.ts`),
-prompt-template rendering (`tests/prompts.test.ts`), and the dashboard's
-formatting helpers (`tests/format.test.ts`).
+prompt-template rendering (`tests/prompts.test.ts`).
 
 > On Windows, `npm test` may fail with `spawn EPERM` when the runner is sandboxed
 > (Node spawns one child per test file). Running a file directly —
@@ -119,20 +116,19 @@ another tool does not strip its metadata.
 
 ```
 src/
+  env.ts                 # server env vars (defineEnvVars)
   lib/
     card.ts              # spec mapping, field preservation, dialogue parsing
     db.ts                # Dexie schema + migrations
-    format.ts            # dashboard formatting helpers (tokens, dates, initials)
     png.ts               # PNG chunk read/write, image compression, thumbnails
     prompts.ts           # editable enhance/regenerate templates + rendering
     settings.svelte.ts   # localStorage-backed settings store
     server/providers.ts  # provider allowlist / endpoint resolution
     components/
-      dashboard/         # character card (grid + list)
       editor/            # editor sub-panels, AiFieldActions
       settings/          # prompt template editor
   routes/
-    +page.svelte         # dashboard: search, sort, grid/list, import
+    +page.svelte         # dashboard: create, import, delete
     editor/[id]/         # character editor
     settings/            # AI, appearance, prompts, backup/restore
     api/generate/        # completion proxy

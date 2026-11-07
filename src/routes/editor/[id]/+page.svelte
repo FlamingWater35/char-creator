@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { onMount, onDestroy, untrack } from "svelte";
-  import { db, type Character, type CharacterAsset } from "$lib/db";
-  import { settings } from "$lib/settings.svelte";
-  import { dialogs } from "$lib/dialogs.svelte";
-  import { autoresize } from "$lib/autoresize";
+  import { db, type Character, type CharacterAsset } from "#lib/db";
+  import { settings } from "#lib/settings.svelte";
+  import { dialogs } from "#lib/dialogs.svelte";
+  import { autoresize } from "#lib/autoresize";
   import { fade } from "svelte/transition";
   import {
     injectCharacterCardMetadata,
@@ -12,9 +12,9 @@
     generateDefaultBlackPNG,
     compressImage,
     toPngDataUrl,
-  } from "$lib/png";
-  import { buildCardPayload } from "$lib/card";
-  import { renderPrompt, buildPromptContext } from "$lib/prompts";
+  } from "#lib/png";
+  import { buildCardPayload } from "#lib/card";
+  import { renderPrompt, buildPromptContext } from "#lib/prompts";
   import {
     Sparkles,
     Loader2,
@@ -26,14 +26,14 @@
   } from "@lucide/svelte";
   import { goto } from "$app/navigation";
 
-  import MediaAssets from "$lib/components/editor/MediaAssets.svelte";
-  import Lorebook from "$lib/components/editor/Lorebook.svelte";
-  import FirstGreetings from "$lib/components/editor/FirstGreetings.svelte";
-  import ExampleDialogues from "$lib/components/editor/ExampleDialogues.svelte";
-  import Subfields from "$lib/components/editor/Subfields.svelte";
-  import AiFieldActions from "$lib/components/editor/AiFieldActions.svelte";
+  import MediaAssets from "#lib/components/editor/MediaAssets.svelte";
+  import Lorebook from "#lib/components/editor/Lorebook.svelte";
+  import FirstGreetings from "#lib/components/editor/FirstGreetings.svelte";
+  import ExampleDialogues from "#lib/components/editor/ExampleDialogues.svelte";
+  import Subfields from "#lib/components/editor/Subfields.svelte";
+  import AiFieldActions from "#lib/components/editor/AiFieldActions.svelte";
 
-  let characterId = $derived($page.params.id as string);
+  let characterId = $derived(page.params.id as string);
 
   let character = $state<Character | null>(null);
   let characterImage = $state<string | null>(null);

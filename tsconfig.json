@@ -1,5 +1,5 @@
 {
-	"extends": "./.svelte-kit/tsconfig.json",
+	"extends": "$app/tsconfig",
 	"compilerOptions": {
 		"rewriteRelativeImportExtensions": true,
 		"allowJs": true,
@@ -10,11 +10,18 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
-		"moduleResolution": "bundler"
-	}
-	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
-	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
-	//
-	// To make changes to top-level options such as include and exclude, we recommend extending
-	// the generated config; see https://svelte.dev/docs/kit/configuration#typescript
+		"moduleResolution": "bundler",
+		// SvelteKit 3 dropped the built-in `$lib` alias in favour of Node subpath
+		// imports (`#lib`, declared in package.json). Vite resolves those natively,
+		// but TypeScript only sees them through this mirror of the same mapping.
+		"paths": {
+			"#lib": ["./src/lib"],
+			"#lib/*": ["./src/lib/*"]
+		}
+	},
+	// `tests/**/*.ts` deliberately, not `tests`: the browser suite is a plain
+	// `.mjs` Playwright script with no type definitions installed, so including
+	// it would fill the 0-warning baseline with implicit-any noise.
+	"include": ["src", "tests/**/*.ts", "*.config.ts"],
+	"exclude": ["src/service-worker.ts"]
 }

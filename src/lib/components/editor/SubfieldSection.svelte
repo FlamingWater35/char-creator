@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { autoresize } from "$lib/autoresize";
+  import { autoresize } from "#lib/autoresize";
   import AiFieldActions from "./AiFieldActions.svelte";
 
   /**

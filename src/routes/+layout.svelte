@@ -1,9 +1,9 @@
 <script lang="ts">
   import "./layout.css";
   import { ModeWatcher } from "mode-watcher";
-  import icon from "$lib/assets/favicon.svg";
-  import GlobalDialogs from "$lib/components/GlobalDialogs.svelte";
-  import { page } from "$app/stores";
+  import icon from "#lib/assets/favicon.svg";
+  import GlobalDialogs from "#lib/components/GlobalDialogs.svelte";
+  import { page } from "$app/state";
   import { fade } from "svelte/transition";
   import { Home, Settings as SettingsIcon } from "@lucide/svelte";
 
@@ -13,8 +13,8 @@
 
   // Highlight navigation links if they match the active pathname prefix
   const isActive = (path: string) => {
-    if (path === "/") return $page.url.pathname === "/";
-    return $page.url.pathname.startsWith(path);
+    if (path === "/") return page.url.pathname === "/";
+    return page.url.pathname.startsWith(path);
   };
 </script>
 
@@ -108,7 +108,7 @@
   <main
     class="flex-1 container mx-auto px-4 py-6 sm:py-10 grid grid-cols-1 grid-rows-1"
   >
-    {#key $page.url.pathname}
+    {#key page.url.pathname}
       <div
         in:fade={{ duration: 200, delay: 100 }}
         class="w-full col-start-1 row-start-1"

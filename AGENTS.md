@@ -4,7 +4,7 @@ Orientation for anyone (human or agent) changing this repository.
 
 ## What this is
 
-A local-first character-card studio for roleplay. SvelteKit 2 + Svelte 5 (runes),
+A local-first character-card studio for roleplay. SvelteKit 3 + Svelte 5 (runes),
 Tailwind v4, Dexie/IndexedDB, OpenAI SDK. There is no backend database and no
 account system: characters, avatars and assets live in the browser, and the two
 API routes are thin proxies to an LLM provider.
@@ -24,16 +24,16 @@ deliberately excluded: it needs a running dev server and a browser, and CI does
 not provision one. It exits 0 with a skip notice when Playwright is absent.
 
 Baseline before you start: `npm run check` reports 0 errors and 0 warnings, and
-all 67 unit tests pass. Do not leave either worse than you found it.
+all 51 unit tests pass. Do not leave either worse than you found it.
 
 ## Layout
 
 ```
 src/
+  env.ts                 # server env vars declared via defineEnvVars (SvelteKit 3)
   lib/
     card.ts              # V2/V3 spec mapping, field preservation, dialogue parsing
     db.ts                # Dexie schema + versioned migrations
-    format.ts            # dashboard formatting helpers (pure, DOM-free)
     png.ts               # PNG chunk read/write, image compression, thumbnails
     prompts.ts           # editable enhance/regenerate templates + placeholder renderer
     reasoning.ts         # strips chain-of-thought blocks from model output
@@ -42,19 +42,17 @@ src/
     autoresize.ts        # `use:autoresize` textarea action
     server/providers.ts  # provider allowlist, SSRF guard, secret redaction
     components/
-      dashboard/         # CharacterCard (grid + list)
       editor/            # AiFieldActions, SubfieldSection, Subfields,
                          # FirstGreetings, ExampleDialogues, Lorebook, MediaAssets
       settings/          # PromptTemplateEditor
   routes/
-    +page.svelte         # dashboard: search, sort, grid/list, import
+    +page.svelte         # dashboard: create, import, delete
     editor/[id]/         # the character editor
     settings/            # appearance, AI engine, prompts, backup/restore
     api/generate/        # completion proxy
     api/models/          # model list proxy
   service-worker.ts      # offline cache
 tests/                   # node:test unit tests; fixtures.ts builds PNGs in memory
-docs/screenshots/        # README images
 ```
 
 Two things about the runtime that shape everything:
@@ -62,9 +60,10 @@ Two things about the runtime that shape everything:
 - **SSR is off.** `src/routes/+layout.ts` is `export const ssr = false`. The app
   is browser-only because IndexedDB and `localStorage` back all state. Do not add
   server-side data loading.
-- **Runes are forced.** `svelte.config.js` sets `compilerOptions.runes` to true
-  for everything outside `node_modules`, so use `$state`/`$derived`/`$props` —
-  the old `export let` / `$:` syntax is not available in `.svelte` files.
+- **Runes are forced.** `vite.config.ts` passes `compilerOptions.runes` to the
+  `sveltekit()` plugin for everything outside `node_modules`, so use
+  `$state`/`$derived`/`$props` — the old `export let` / `$:` syntax is not
+  available in `.svelte` files.
 
 ## Conventions
 
@@ -74,7 +73,7 @@ Prettier or ESLint config in this repo. Files split roughly by age:
 - Tabs: `card.ts`, `reasoning.ts`, `server/providers.ts`, `api/**/+server.ts`,
   `service-worker.ts`, `tests/*.test.ts`
 - Two spaces: `db.ts`, `png.ts`, `settings.svelte.ts`, `dialogs.svelte.ts`,
-  `autoresize.ts`, `format.ts`, `prompts.ts`, every `.svelte` file
+  `autoresize.ts`, `env.ts`, `prompts.ts`, every `.svelte` file
 
 Match the file you are editing. Never reformat a whole file to your own taste —
 it buries the real change in a diff nobody can review.
@@ -84,7 +83,7 @@ Other conventions:
 - Comments explain *why*, not *what*. Several non-obvious decisions in this
   codebase are load-bearing and are commented at the point of the decision; keep
   that style when you add something surprising.
-- Relative imports inside `src/lib` (`./prompts`), `$lib/...` elsewhere.
+- Relative imports inside `src/lib` (`./prompts`), `#lib/...` elsewhere.
 - `dialogs.alert()` / `dialogs.confirm()` rather than `window.alert`/`confirm`.
 - Destructive or irreversible actions ask first.
 
@@ -137,7 +136,23 @@ file, and asks before changing the provider or base URL.
 
 ## Gotchas that cost real time
 
-**`@lucide/svelte` 1.17.0 has no per-icon files.** Exports live in
+**SvelteKit 3 removed several things this repo used.** Each has a replacement,
+and the migration is done — do not reintroduce the old form:
+
+- `svelte.config.js` is gone. Configuration lives in the `sveltekit({...})` call
+  in `vite.config.ts`.
+- `$lib` is no longer a built-in alias. It is now `#lib`, declared as Node
+  subpath imports in `package.json` (`"imports": { "#lib": ..., "#lib/*": ... }`)
+  and mirrored in `tsconfig.json` `compilerOptions.paths` because TypeScript
+  needs the explicit mapping.
+- `$service-worker` is gone. `src/service-worker.ts` uses `immutable`/`assets`
+  from `$app/manifest` and `version` from `$app/env`. The manifest arrays hold
+  `{ path }` objects, not strings.
+- `$app/stores` is gone; use `page` from `$app/state` (no `$` prefix).
+- `$env/dynamic/private` is gone; declare variables in `src/env.ts` with
+  `defineEnvVars` and import them from `$app/env/private`.
+
+**`@lucide/svelte` has no per-icon files.** Exports live in
 `dist/icons/index.js` (core) and `dist/aliases/aliases.js` (aliases such as
 `Edit`, `Loader2`, `CircleHelp`, `Grid2x2`). Check the index before assuming an
 icon name exists — a wrong name is a build-time error that is easy to avoid.
@@ -157,9 +172,13 @@ a label overflows a 375px viewport and scrolls the whole page sideways. This was
 a real bug; `AiFieldActions` wraps its buttons for that reason.
 
 **`localStorage` keys are prefixed `or_`** and read/written in
-`settings.svelte.ts` (`or_key`, `or_model`, `or_enhance_prompt`,
-`or_dashboard_view`, …). Private browsing throws on access, so every read and
-write is wrapped in try/catch — keep it that way.
+`settings.svelte.ts` (`or_key`, `or_model`, `or_enhance_prompt`, …). Private
+browsing throws on access, so every read and write is wrapped in try/catch —
+keep it that way.
+
+**`$props<T>()` is no longer accepted.** Write
+`let { x }: { x: T } = $props();` — the type argument form was removed in
+Svelte 5.57.
 
 ## Testing
 

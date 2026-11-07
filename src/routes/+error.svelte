@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { ArrowLeft, RotateCcw } from "@lucide/svelte";
 
-  let { error } = $props<{ error: { message: string; status?: number } }>();
+  let { error }: { error: { message: string; status?: number } } = $props();
 
   const status = $derived(error?.status ?? 500);
 
@@ -43,9 +43,9 @@
     </button>
   </div>
 
-  {#if $page.url.pathname !== "/"}
+  {#if page.url.pathname !== "/"}
     <p class="text-xs text-muted-foreground font-mono break-all pt-4">
-      {$page.url.pathname}
+      {page.url.pathname}
     </p>
   {/if}
 </div>

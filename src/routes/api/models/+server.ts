@@ -1,7 +1,7 @@
 import { json, type RequestEvent } from '@sveltejs/kit';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { resolveEndpoint, redactSecrets } from '$lib/server/providers';
+import { resolveEndpoint, redactSecrets } from '#lib/server/providers';
 
 /**
  * Handles server-side fetching of available models from dynamic LLM providers.

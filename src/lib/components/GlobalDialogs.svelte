@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dialogs } from "$lib/dialogs.svelte";
+  import { dialogs } from "#lib/dialogs.svelte";
   import { fade, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
 

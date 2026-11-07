@@ -1,44 +1,34 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { db, type Character, type CharacterBook } from "$lib/db";
-  import { dialogs } from "$lib/dialogs.svelte";
+  import {
+    db,
+    type Character,
+    type CharacterBook,
+  } from "#lib/db";
+  import { dialogs } from "#lib/dialogs.svelte";
   import { goto } from "$app/navigation";
   import {
     Plus,
+    Trash2,
+    Edit,
+    Loader2,
     FileUp,
     Search,
     X,
-    LayoutGrid,
-    Rows3,
-    Loader2,
-    Sparkles,
-    Layers,
-    BookOpen,
-    ArrowUpDown,
-    ChevronRight,
-    Wand,
   } from "@lucide/svelte";
-  import { fade, slide } from "svelte/transition";
+  import { fade } from "svelte/transition";
   import {
     extractCharacterCardMetadata,
     generateThumbnail,
     compressImage,
-  } from "$lib/png";
+  } from "#lib/png";
   import {
     buildCardMeta,
     buildBookExtra,
     buildEntryExtra,
     extractSection,
     parseExampleMessages,
-  } from "$lib/card";
-  import { formatTokens, summarizeCharacter } from "$lib/format";
-  import CharacterCard from "$lib/components/dashboard/CharacterCard.svelte";
-
-  type ViewMode = "grid" | "list";
-  type SortMode = "recent" | "name" | "tokens";
-
-  const VIEW_KEY = "or_dashboard_view";
-  const SORT_KEY = "or_dashboard_sort";
+  } from "#lib/card";
 
   let characters = $state<Character[]>([]);
   let searchQuery = $state("");
@@ -46,73 +36,17 @@
   let isImporting = $state(false);
   let fileInputImport = $state<HTMLInputElement>();
 
-  let view = $state<ViewMode>("grid");
-  let sort = $state<SortMode>("recent");
-  /** Set once the stored preferences are read, so the writer cannot clobber them. */
-  let prefsLoaded = $state(false);
-
-  let normalizedQuery = $derived(searchQuery.trim().toLowerCase());
-
-  /**
-   * Token counts are computed once per character per change rather than inside
-   * the sort comparator, which would re-walk every field O(n log n) times.
-   */
-  let tokenCounts = $derived.by(() => {
-    const map = new Map<string, number>();
-    for (const c of characters) map.set(c.id, summarizeCharacter(c).tokens);
-    return map;
-  });
-
-  let filteredCharacters = $derived.by(() => {
-    const matched = characters.filter((c) => {
-      if (!normalizedQuery) return true;
-      // Searching the concept as well as the name is what people actually
-      // expect: they remember "the dragon one", not the character's name.
-      return (
-        c.name.toLowerCase().includes(normalizedQuery) ||
-        (c.data.mainPrompt ?? "").toLowerCase().includes(normalizedQuery)
-      );
-    });
-
-    return [...matched].sort((a, b) => {
-      if (sort === "name") {
-        return (a.name || "").localeCompare(b.name || "", undefined, {
-          sensitivity: "base",
-        });
-      }
-      if (sort === "tokens") {
-        return (tokenCounts.get(b.id) ?? 0) - (tokenCounts.get(a.id) ?? 0);
-      }
-      return (
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-    });
-  });
-
-  let totals = $derived.by(() => {
-    let tokens = 0;
-    let lore = 0;
-    for (const c of characters) {
-      const s = summarizeCharacter(c);
-      tokens += s.tokens;
-      lore += s.loreEntries;
-    }
-    return { tokens, lore };
-  });
+  let filteredCharacters = $derived(
+    characters.filter((c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
+  );
 
   /**
    * Fetches initial character list safely.
    */
   onMount(async () => {
     try {
-      const savedView = localStorage.getItem(VIEW_KEY);
-      if (savedView === "grid" || savedView === "list") view = savedView;
-
-      const savedSort = localStorage.getItem(SORT_KEY);
-      if (savedSort === "recent" || savedSort === "name" || savedSort === "tokens")
-        sort = savedSort;
-
-      prefsLoaded = true;
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
     } catch (err: any) {
       console.error("Failed to query characters:", err);
@@ -122,19 +56,6 @@
       );
     } finally {
       loading = false;
-    }
-  });
-
-  // Persisting the view choice is a convenience, never a hard failure: private
-  // browsing modes throw on localStorage. Skipped until the read completes so
-  // the defaults cannot overwrite a stored preference.
-  $effect(() => {
-    if (!prefsLoaded) return;
-    try {
-      localStorage.setItem(VIEW_KEY, view);
-      localStorage.setItem(SORT_KEY, sort);
-    } catch {
-      /* Preference will not survive a reload. */
     }
   });
 
@@ -453,254 +374,160 @@
   <title>Char Creator - Dashboard</title>
 </svelte:head>
 
-<div class="animate-fade-in space-y-6">
-  <!-- Header: identity on the left, primary actions on the right. -->
+<div
+  class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4 animate-fade-in"
+>
+  <h1 class="text-3xl font-bold tracking-tight">Your Characters</h1>
   <div
-    class="flex flex-col lg:flex-row lg:items-end justify-between gap-5 border-b border-border/60 pb-6"
+    class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto"
   >
-    <div class="space-y-2">
-      <div
-        class="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400"
-      >
-        <Sparkles class="w-3 h-3" /> Local-first studio
-      </div>
-      <h1 class="text-3xl sm:text-4xl font-black tracking-tight">
-        Your Characters
-      </h1>
-      <p class="text-sm text-muted-foreground">
-        {#if loading}
-          Loading your library…
-        {:else if characters.length === 0}
-          Build roleplay personalities that live entirely in this browser.
-        {:else}
-          {characters.length} character{characters.length === 1 ? "" : "s"} ·
-          ~{formatTokens(totals.tokens)} context tokens · {totals.lore} lore
-          entr{totals.lore === 1 ? "y" : "ies"}
-        {/if}
-      </p>
-    </div>
-
-    <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-      <button
-        type="button"
-        onclick={() => fileInputImport?.click()}
-        disabled={isImporting}
-        class="inline-flex items-center justify-center gap-2 rounded-xl border bg-secondary/60 px-4 py-2.5 text-sm font-bold transition-colors hover:bg-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 cursor-pointer"
-      >
-        {#if isImporting}
-          <Loader2 class="w-4 h-4 animate-spin" /> Importing…
-        {:else}
-          <FileUp class="w-4 h-4" /> Import PNG Card
-        {/if}
-      </button>
-      <button
-        type="button"
-        onclick={createNew}
-        class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 cursor-pointer"
-      >
-        <Plus class="w-4 h-4" /> New Character
-      </button>
-    </div>
-  </div>
-
-  <input
-    type="file"
-    accept="image/png"
-    class="hidden"
-    bind:this={fileInputImport}
-    onchange={handleImportCard}
-  />
-
-  <!-- Toolbar: search, sort and layout. Only shown once there is a library. -->
-  {#if !loading && characters.length > 0}
-    <div
-      class="flex flex-col sm:flex-row sm:items-center gap-2"
-      transition:slide={{ duration: 150 }}
+    <button
+      onclick={() => fileInputImport?.click()}
+      disabled={isImporting}
+      class="flex items-center justify-center gap-2 bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium transition-colors w-full sm:w-auto cursor-pointer shadow-sm disabled:opacity-50"
     >
-      <div
-        class="group relative flex h-11 flex-1 items-center rounded-xl border bg-card px-3 shadow-sm transition-all focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500/50"
-      >
-        <Search
-          class="w-4 h-4 shrink-0 text-muted-foreground transition-colors group-focus-within:text-blue-500"
-          aria-hidden="true"
-        />
-        <input
-          type="text"
-          bind:value={searchQuery}
-          placeholder="Search by name or concept…"
-          aria-label="Search characters"
-          class="h-full w-full bg-transparent px-2.5 text-sm font-medium focus:outline-none placeholder:font-normal placeholder:text-muted-foreground/70"
-        />
-        {#if searchQuery}
-          <button
-            type="button"
-            onclick={() => (searchQuery = "")}
-            class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
-            aria-label="Clear search query"
-          >
-            <X class="w-4 h-4" />
-          </button>
-        {/if}
-      </div>
+      {#if isImporting}
+        <Loader2 class="w-4 h-4 animate-spin" /> Importing...
+      {:else}
+        <FileUp class="w-4 h-4" /> Import PNG Card
+      {/if}
+    </button>
+    <button
+      onclick={createNew}
+      class="flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium transition-opacity w-full sm:w-auto cursor-pointer shadow-sm"
+    >
+      <Plus class="w-4 h-4" /> Create New Character
+    </button>
+  </div>
+</div>
 
-      <div class="flex items-center gap-2">
-        <label class="sr-only" for="sort-mode">Sort characters</label>
-        <div
-          class="relative flex h-11 items-center rounded-xl border bg-card shadow-sm"
-        >
-          <ArrowUpDown
-            class="pointer-events-none absolute left-3 w-3.5 h-3.5 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <select
-            id="sort-mode"
-            bind:value={sort}
-            class="h-full appearance-none rounded-xl bg-transparent pl-8 pr-8 text-xs font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-pointer"
-          >
-            <option value="recent">Recent</option>
-            <option value="name">Name</option>
-            <option value="tokens">Size</option>
-          </select>
-          <ChevronRight
-            class="pointer-events-none absolute right-2.5 w-3.5 h-3.5 rotate-90 text-muted-foreground"
-            aria-hidden="true"
-          />
-        </div>
-
-        <div
-          class="flex h-11 items-center gap-0.5 rounded-xl border bg-card p-1 shadow-sm"
-          role="group"
-          aria-label="Layout"
-        >
-          <button
-            type="button"
-            onclick={() => (view = "grid")}
-            aria-pressed={view === "grid"}
-            aria-label="Grid layout"
-            title="Grid layout"
-            class="flex h-full items-center justify-center rounded-lg px-2.5 transition-colors cursor-pointer {view ===
-            'grid'
-              ? 'bg-secondary text-foreground'
-              : 'text-muted-foreground hover:text-foreground'}"
-          >
-            <LayoutGrid class="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onclick={() => (view = "list")}
-            aria-pressed={view === "list"}
-            aria-label="List layout"
-            title="List layout"
-            class="flex h-full items-center justify-center rounded-lg px-2.5 transition-colors cursor-pointer {view ===
-            'list'
-              ? 'bg-secondary text-foreground'
-              : 'text-muted-foreground hover:text-foreground'}"
-          >
-            <Rows3 class="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <div aria-live="polite" aria-busy={loading}>
-    {#if loading}
-      <div
-        in:fade={{ duration: 200 }}
-        class="flex flex-col items-center justify-center py-28 text-muted-foreground"
-        role="status"
+{#if characters.length > 0}
+  <div
+    class="mb-6 h-12 relative flex items-center bg-card border rounded-xl px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all"
+  >
+    <Search
+      class="w-5 h-5 text-muted-foreground mr-3 shrink-0"
+      aria-hidden="true"
+    />
+    <input
+      type="text"
+      bind:value={searchQuery}
+      placeholder="Search characters by name..."
+      aria-label="Search characters"
+      class="w-full h-full bg-transparent focus:outline-none text-sm font-medium text-foreground"
+    />
+    {#if searchQuery}
+      <button
+        onclick={() => (searchQuery = "")}
+        class="p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
+        aria-label="Clear Search Query"
       >
-        <Loader2 class="w-7 h-7 animate-spin mb-4" aria-hidden="true" />
-        <p class="text-sm font-medium">Loading characters…</p>
-      </div>
-    {:else if characters.length === 0}
-      <div
-        in:fade={{ duration: 200 }}
-        class="relative overflow-hidden rounded-3xl border border-dashed bg-card px-6 py-16 text-center shadow-sm"
-      >
-        <div
-          class="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-gradient-to-b from-blue-500/10 to-transparent blur-2xl"
-        ></div>
-        <div
-          class="relative mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400"
-        >
-          <Wand class="w-7 h-7" />
-        </div>
-        <h2 class="relative text-2xl font-black tracking-tight">
-          Your library is empty
-        </h2>
-        <p
-          class="relative mx-auto mt-2 mb-7 max-w-md text-sm text-muted-foreground"
-        >
-          Start from a single sentence — a concept is enough to generate a full
-          sheet with description, personality, greetings and lore. Or bring in a
-          card you already have.
-        </p>
-        <div
-          class="relative flex flex-col sm:flex-row items-center justify-center gap-2"
-        >
-          <button
-            type="button"
-            onclick={createNew}
-            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-blue-700 cursor-pointer"
-          >
-            <Plus class="w-4 h-4" /> Create your first character
-          </button>
-          <button
-            type="button"
-            onclick={() => fileInputImport?.click()}
-            class="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border bg-secondary/60 px-5 py-2.5 text-sm font-bold transition-colors hover:bg-secondary cursor-pointer"
-          >
-            <FileUp class="w-4 h-4" /> Import PNG Card
-          </button>
-        </div>
-        <div
-          class="relative mx-auto mt-10 grid max-w-lg grid-cols-1 sm:grid-cols-3 gap-3 text-left"
-        >
-          {#each [{ icon: Sparkles, title: "Generate", text: "One concept, a whole sheet." }, { icon: Layers, title: "Refine", text: "Enhance or regenerate any field." }, { icon: BookOpen, title: "Export", text: "Spec-compliant V2/V3 PNG." }] as step (step.title)}
-            <div class="rounded-xl border bg-background/60 p-3">
-              <step.icon class="w-4 h-4 text-blue-500 mb-2" />
-              <div class="text-xs font-bold">{step.title}</div>
-              <div class="text-[11px] text-muted-foreground leading-snug">
-                {step.text}
-              </div>
-            </div>
-          {/each}
-        </div>
-      </div>
-    {:else if filteredCharacters.length === 0}
-      <div
-        in:fade={{ duration: 200 }}
-        class="rounded-2xl border border-dashed bg-card px-6 py-16 text-center"
-      >
-        <Search class="w-6 h-6 mx-auto mb-3 text-muted-foreground/60" />
-        <p class="font-bold">No matches for “{searchQuery.trim()}”</p>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Search covers character names and their core concepts.
-        </p>
-        <button
-          type="button"
-          onclick={() => (searchQuery = "")}
-          class="mt-4 inline-flex items-center gap-1.5 rounded-lg border bg-secondary/60 px-3 py-2 text-xs font-bold transition-colors hover:bg-secondary cursor-pointer"
-        >
-          <X class="w-3.5 h-3.5" /> Clear search
-        </button>
-      </div>
-    {:else if view === "grid"}
-      <div
-        in:fade={{ duration: 200 }}
-        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-      >
-        {#each filteredCharacters as char (char.id)}
-          <CharacterCard {char} view="grid" ondelete={deleteChar} />
-        {/each}
-      </div>
-    {:else}
-      <div in:fade={{ duration: 200 }} class="space-y-2">
-        {#each filteredCharacters as char (char.id)}
-          <CharacterCard {char} view="list" ondelete={deleteChar} />
-        {/each}
-      </div>
+        <X class="w-4 h-4" />
+      </button>
     {/if}
   </div>
+{/if}
+
+<input
+  type="file"
+  accept="image/png"
+  class="hidden"
+  bind:this={fileInputImport}
+  onchange={handleImportCard}
+/>
+
+<div aria-live="polite">
+  {#if loading}
+    <div
+      in:fade={{ duration: 200 }}
+      class="flex flex-col items-center justify-center py-32 text-muted-foreground"
+    >
+      <Loader2 class="w-8 h-8 animate-spin mb-4" aria-hidden="true" />
+      <p>Loading characters...</p>
+    </div>
+  {:else if characters.length === 0}
+    <div
+      in:fade={{ duration: 200 }}
+      class="text-center py-20 border border-dashed rounded-lg bg-card px-4 shadow-sm"
+    >
+      <h2 class="text-xl font-semibold mb-2">No characters found</h2>
+      <p class="text-muted-foreground mb-6">
+        Start building your first roleplay personality.
+      </p>
+      <div
+        class="flex flex-col sm:flex-row items-center justify-center gap-2 max-w-sm mx-auto"
+      >
+        <button
+          onclick={createNew}
+          class="w-full sm:w-auto bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium cursor-pointer shadow-sm"
+          >Get Started</button
+        >
+        <button
+          onclick={() => fileInputImport?.click()}
+          class="w-full sm:w-auto bg-secondary text-secondary-foreground border px-4 py-2 rounded-md hover:bg-secondary/80 font-medium cursor-pointer shadow-sm"
+          >Import Card</button
+        >
+      </div>
+    </div>
+  {:else if filteredCharacters.length === 0}
+    <div
+      in:fade={{ duration: 200 }}
+      class="text-center py-20 border border-dashed rounded-lg bg-card px-4"
+    >
+      <p class="text-muted-foreground">
+        No characters match your search query.
+      </p>
+    </div>
+  {:else}
+    <div
+      in:fade={{ duration: 200 }}
+      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    >
+      {#each filteredCharacters as char (char.id)}
+        <div
+          class="border rounded-xl p-6 flex flex-col justify-between bg-card text-card-foreground shadow-sm hover:shadow-md transition-all"
+        >
+          <div>
+            <div class="flex items-center gap-4 mb-4">
+              <div
+                class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center"
+              >
+                {#if char.data.thumbnail}
+                  <img
+                    src={char.data.thumbnail}
+                    alt="{char.name} Thumbnail"
+                    class="w-full h-full object-cover"
+                  />
+                {:else}
+                  <span class="text-xl" aria-hidden="true">🎭</span>
+                {/if}
+              </div>
+              <h2 class="text-xl font-semibold line-clamp-1">
+                {char.name || "Unnamed Character"}
+              </h2>
+            </div>
+            <p class="text-sm text-muted-foreground mb-4 line-clamp-3">
+              {char.data.mainPrompt || "No core concept provided."}
+            </p>
+          </div>
+          <div class="flex items-center gap-2 mt-4 pt-4 border-t border-border">
+            <a
+              href="/editor/{char.id}"
+              aria-label="Edit {char.name}"
+              class="flex-1 flex items-center justify-center gap-2 bg-secondary text-secondary-foreground py-2 rounded-md hover:bg-secondary/80 transition-colors border shadow-sm font-medium"
+            >
+              <Edit class="w-4 h-4" aria-hidden="true" /> Edit
+            </a>
+            <button
+              onclick={() => deleteChar(char.id)}
+              aria-label="Delete {char.name}"
+              class="p-2 text-destructive border border-transparent hover:border-destructive/20 hover:bg-destructive/10 rounded-md transition-colors cursor-pointer"
+            >
+              <Trash2 class="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
 </div>

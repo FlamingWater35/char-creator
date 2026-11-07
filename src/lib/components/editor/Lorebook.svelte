@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { CharacterBook } from "$lib/db";
-  import { autoresize } from "$lib/autoresize";
+  import type { CharacterBook } from "#lib/db";
+  import { autoresize } from "#lib/autoresize";
   import { slide } from "svelte/transition";
   import {
     Plus,

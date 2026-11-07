@@ -1,5 +1,6 @@
 /// <reference types="@sveltejs/kit" />
-import { build, files, version } from '$service-worker';
+import { assets, immutable } from '$app/manifest';
+import { version } from '$app/env';
 
 /**
  * Offline strategy
@@ -11,10 +12,15 @@ import { build, files, version } from '$service-worker';
  *   cached app shell, so an offline reload shows the UI instead of a 503.
  * - Hashed build assets: cache first (their URL changes when they change).
  * - Everything else: network first with a cached fallback.
+ *
+ * SvelteKit 3 replaced `$service-worker`'s `build`/`files`/`version` with
+ * `immutable`/`assets` from `$app/manifest` and `version` from `$app/env`.
+ * Both manifest arrays are `{ path }` objects rather than bare strings.
  */
 
 const CACHE = `cache-${version}`;
-const ASSETS = [...build, ...files];
+const BUILD_PATHS = immutable.map((entry) => entry.path);
+const ASSETS = [...BUILD_PATHS, ...assets.map((entry) => entry.path)];
 
 /** Cap the runtime cache so long-lived installs cannot grow without bound. */
 const MAX_RUNTIME_ENTRIES = 120;
@@ -87,7 +93,7 @@ self.addEventListener('fetch', (event: any) => {
 			const cache = await caches.open(CACHE);
 
 			// Hashed build output never changes under a given URL.
-			if (build.includes(url.pathname)) {
+			if (BUILD_PATHS.includes(url.pathname)) {
 				const cached = await cache.match(url.pathname);
 				if (cached) return cached;
 			}

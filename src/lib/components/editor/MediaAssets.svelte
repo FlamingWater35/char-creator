@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { CharacterAsset } from "$lib/db";
-  import { dialogs } from "$lib/dialogs.svelte";
-  import { compressImage } from "$lib/png";
+  import type { CharacterAsset } from "#lib/db";
+  import { dialogs } from "#lib/dialogs.svelte";
+  import { compressImage } from "#lib/png";
   import { Trash2, ImagePlus } from "@lucide/svelte";
 
   // Binds external media arrays to the editor's parent state

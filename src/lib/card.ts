@@ -1,4 +1,4 @@
-import type { Character, CharacterBook, CharacterBookEntry } from '$lib/db';
+import type { Character, CharacterBook, CharacterBookEntry } from '#lib/db';
 
 /**
  * Fields this app reads and writes itself. Everything else on an imported card
