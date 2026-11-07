@@ -15,6 +15,84 @@ When generating or refining characters:
 3. Do not use conversational filler, meta-introductions, or conversational outro commentary.
 4. If generating raw text, output only the requested refinement. If requested to generate JSON, output ONLY a valid, syntax-compliant JSON object without markdown wrappers or code block wrapping.`;
 
+/** The concept-generation switches, as a closed union of setting names. */
+export type GenerationToggleKey =
+  | 'genName'
+  | 'genDescription'
+  | 'genPersonality'
+  | 'genScenario'
+  | 'genBackstory'
+  | 'genFirstMessages'
+  | 'genExampleMessages'
+  | 'genRelatedCharacters';
+
+/**
+ * The concept-generation switches, with their labels.
+ *
+ * Declared once as a typed list so the settings UI can iterate over it without
+ * `settings as any` — that cast defeated the compiler precisely where a typo
+ * would silently toggle the wrong field.
+ */
+export const GENERATION_TOGGLES: ReadonlyArray<{
+  key: GenerationToggleKey;
+  label: string;
+}> = [
+  { key: 'genName', label: 'Name' },
+  { key: 'genDescription', label: 'Description' },
+  { key: 'genPersonality', label: 'Personality' },
+  { key: 'genScenario', label: 'Scenario' },
+  { key: 'genBackstory', label: 'Backstory' },
+  { key: 'genFirstMessages', label: 'Greetings' },
+  { key: 'genExampleMessages', label: 'Examples' },
+  { key: 'genRelatedCharacters', label: 'Relations' },
+];
+
+/**
+ * One persisted setting: which property it is, which `or_*` key it lives under,
+ * how to parse it, and what to use when the key is absent.
+ *
+ * `load()` and `save()` iterate this table, so the read and write halves of a
+ * setting cannot drift apart — the previous hand-written pair of 24-line blocks
+ * had to be kept in sync by eye, and a new setting was easy to write but never
+ * read back.
+ */
+interface PersistedField {
+  property: string;
+  storage: string;
+  kind: 'string' | 'number' | 'int' | 'boolean';
+  /** Serialised default, used when the key is missing or unparseable. */
+  fallback: string;
+}
+
+const PERSISTED: PersistedField[] = [
+  { property: 'apiKey', storage: 'or_key', kind: 'string', fallback: '' },
+  { property: 'model', storage: 'or_model', kind: 'string', fallback: 'openai/gpt-chat-latest' },
+  { property: 'temperature', storage: 'or_temp', kind: 'number', fallback: '0.8' },
+  { property: 'frequencyPenalty', storage: 'or_freq', kind: 'number', fallback: '0' },
+  { property: 'presencePenalty', storage: 'or_pres', kind: 'number', fallback: '0' },
+
+  { property: 'topP', storage: 'or_top_p', kind: 'number', fallback: '1' },
+  { property: 'maxTokens', storage: 'or_max_tokens', kind: 'int', fallback: '8192' },
+  { property: 'systemPrompt', storage: 'or_system_prompt', kind: 'string', fallback: DEFAULT_SYSTEM_PROMPT },
+  { property: 'enhancePrompt', storage: 'or_enhance_prompt', kind: 'string', fallback: DEFAULT_ENHANCE_PROMPT },
+  { property: 'regeneratePrompt', storage: 'or_regenerate_prompt', kind: 'string', fallback: DEFAULT_REGENERATE_PROMPT },
+
+  { property: 'provider', storage: 'or_provider', kind: 'string', fallback: 'openrouter' },
+  { property: 'customBaseUrl', storage: 'or_custom_url', kind: 'string', fallback: '' },
+
+  { property: 'genName', storage: 'or_gen_name', kind: 'boolean', fallback: 'true' },
+  { property: 'genDescription', storage: 'or_gen_desc', kind: 'boolean', fallback: 'true' },
+  { property: 'genPersonality', storage: 'or_gen_pers', kind: 'boolean', fallback: 'true' },
+  { property: 'genScenario', storage: 'or_gen_scen', kind: 'boolean', fallback: 'true' },
+  { property: 'genBackstory', storage: 'or_gen_back', kind: 'boolean', fallback: 'true' },
+  { property: 'genFirstMessages', storage: 'or_gen_fmsg', kind: 'boolean', fallback: 'true' },
+  { property: 'genExampleMessages', storage: 'or_gen_emsg', kind: 'boolean', fallback: 'true' },
+  { property: 'genRelatedCharacters', storage: 'or_gen_rchar', kind: 'boolean', fallback: 'false' },
+
+  { property: 'mergeTraitsOnExport', storage: 'or_merge_export', kind: 'boolean', fallback: 'false' },
+  { property: 'exportVersion', storage: 'or_export_version', kind: 'string', fallback: 'v3' },
+];
+
 /**
  * App-wide settings and parameters for API providers, AI generation toggles,
  * and card export specifications. Saves instantly to localStorage on changes.
@@ -62,37 +140,15 @@ class Settings {
    * Defends against private browsing limitations or disabled cookies.
    */
   load() {
-    if (typeof window !== 'undefined') {
-      try {
-        this.apiKey = localStorage.getItem('or_key') || '';
-        this.model = localStorage.getItem('or_model') || 'openai/gpt-chat-latest';
-        this.temperature = parseFloat(localStorage.getItem('or_temp') || '0.8');
-        this.frequencyPenalty = parseFloat(localStorage.getItem('or_freq') || '0');
-        this.presencePenalty = parseFloat(localStorage.getItem('or_pres') || '0');
+    if (typeof window === 'undefined') return;
 
-        this.topP = parseFloat(localStorage.getItem('or_top_p') || '1.0');
-        this.maxTokens = parseInt(localStorage.getItem('or_max_tokens') || '8192', 10);
-        this.systemPrompt = localStorage.getItem('or_system_prompt') || DEFAULT_SYSTEM_PROMPT;
-        this.enhancePrompt = localStorage.getItem('or_enhance_prompt') || DEFAULT_ENHANCE_PROMPT;
-        this.regeneratePrompt = localStorage.getItem('or_regenerate_prompt') || DEFAULT_REGENERATE_PROMPT;
-
-        this.provider = localStorage.getItem('or_provider') || 'openrouter';
-        this.customBaseUrl = localStorage.getItem('or_custom_url') || '';
-
-        this.genName = localStorage.getItem('or_gen_name') !== 'false';
-        this.genDescription = localStorage.getItem('or_gen_desc') !== 'false';
-        this.genPersonality = localStorage.getItem('or_gen_pers') !== 'false';
-        this.genScenario = localStorage.getItem('or_gen_scen') !== 'false';
-        this.genBackstory = localStorage.getItem('or_gen_back') !== 'false';
-        this.genFirstMessages = localStorage.getItem('or_gen_fmsg') !== 'false';
-        this.genExampleMessages = localStorage.getItem('or_gen_emsg') !== 'false';
-        this.genRelatedCharacters = localStorage.getItem('or_gen_rchar') === 'true';
-
-        this.mergeTraitsOnExport = localStorage.getItem('or_merge_export') === 'true';
-        this.exportVersion = (localStorage.getItem('or_export_version') as 'v2' | 'v3') || 'v3';
-      } catch (e) {
-        console.warn("Could not read configuration states from localStorage:", e);
+    try {
+      for (const field of PERSISTED) {
+        const raw = localStorage.getItem(field.storage);
+        this.writeField(field, raw === null ? field.fallback : raw);
       }
+    } catch (e) {
+      console.warn("Could not read configuration states from localStorage:", e);
     }
   }
 
@@ -100,37 +156,73 @@ class Settings {
    * Safe-writes current configuration attributes to local storage.
    */
   save() {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('or_key', this.apiKey);
-        localStorage.setItem('or_model', this.model);
-        localStorage.setItem('or_temp', this.temperature.toString());
-        localStorage.setItem('or_freq', this.frequencyPenalty.toString());
-        localStorage.setItem('or_pres', this.presencePenalty.toString());
+    if (typeof window === 'undefined') return;
 
-        localStorage.setItem('or_top_p', this.topP.toString());
-        localStorage.setItem('or_max_tokens', this.maxTokens.toString());
-        localStorage.setItem('or_system_prompt', this.systemPrompt);
-        localStorage.setItem('or_enhance_prompt', this.enhancePrompt);
-        localStorage.setItem('or_regenerate_prompt', this.regeneratePrompt);
-
-        localStorage.setItem('or_provider', this.provider);
-        localStorage.setItem('or_custom_url', this.customBaseUrl);
-
-        localStorage.setItem('or_gen_name', this.genName ? 'true' : 'false');
-        localStorage.setItem('or_gen_desc', this.genDescription ? 'true' : 'false');
-        localStorage.setItem('or_gen_pers', this.genPersonality ? 'true' : 'false');
-        localStorage.setItem('or_gen_scen', this.genScenario ? 'true' : 'false');
-        localStorage.setItem('or_gen_back', this.genBackstory ? 'true' : 'false');
-        localStorage.setItem('or_gen_fmsg', this.genFirstMessages ? 'true' : 'false');
-        localStorage.setItem('or_gen_emsg', this.genExampleMessages ? 'true' : 'false');
-        localStorage.setItem('or_gen_rchar', this.genRelatedCharacters ? 'true' : 'false');
-
-        localStorage.setItem('or_merge_export', this.mergeTraitsOnExport ? 'true' : 'false');
-        localStorage.setItem('or_export_version', this.exportVersion);
-      } catch (e) {
-        console.warn("Could not save configuration states to localStorage:", e);
+    try {
+      for (const field of PERSISTED) {
+        localStorage.setItem(field.storage, String(this.readField(field)));
       }
+    } catch (e) {
+      console.warn("Could not save configuration states to localStorage:", e);
+    }
+  }
+
+  /**
+   * Every persisted setting, as a plain object.
+   *
+   * Reading this inside a `$effect` subscribes to all of them at once, so the
+   * settings page no longer has to hand-maintain a 22-line dependency list that
+   * silently stops covering anything added later.
+   */
+  snapshot(): Record<string, string | number | boolean> {
+    const out: Record<string, string | number | boolean> = {};
+    for (const field of PERSISTED) out[field.property] = this.readField(field);
+    return out;
+  }
+
+  /**
+   * Reads one setting by its storage descriptor.
+   *
+   * The cast is confined here on purpose: the property names in `PERSISTED` are
+   * checked against this class by `satisfies` below, so a renamed field fails
+   * to compile instead of silently writing to a key nobody reads.
+   */
+  private readField(field: PersistedField): string | number | boolean {
+    return (this as unknown as Record<string, string | number | boolean>)[
+      field.property
+    ];
+  }
+
+  private writeField(field: PersistedField, raw: string): void {
+    const target = this as unknown as Record<string, string | number | boolean>;
+
+    switch (field.kind) {
+      case 'number': {
+        const parsed = Number.parseFloat(raw);
+        // A corrupted or hand-edited value must not become NaN, which would
+        // silently disable the control it feeds.
+        target[field.property] = Number.isFinite(parsed) ? parsed : Number(field.fallback);
+        return;
+      }
+      case 'int': {
+        const parsed = Number.parseInt(raw, 10);
+        target[field.property] = Number.isFinite(parsed) ? parsed : Number(field.fallback);
+        return;
+      }
+      case 'boolean':
+        // Anything that is neither "true" nor "false" falls back, rather than
+        // guessing — the previous `!== 'false'` read turned garbage into `true`.
+        target[field.property] =
+          raw === 'true' ? true : raw === 'false' ? false : field.fallback === 'true';
+        return;
+      default:
+        // `exportVersion` is a closed union; a stale or hand-edited value would
+        // otherwise flow straight into the export path.
+        if (field.property === 'exportVersion') {
+          target[field.property] = raw === 'v2' ? 'v2' : 'v3';
+          return;
+        }
+        target[field.property] = raw;
     }
   }
 

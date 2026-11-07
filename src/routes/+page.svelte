@@ -3,9 +3,11 @@
   import {
     db,
     type Character,
+    type CharacterAsset,
     type CharacterBook,
   } from "#lib/db";
   import { dialogs } from "#lib/dialogs.svelte";
+  import { errorMessage } from "#lib/errors";
   import { goto } from "$app/navigation";
   import {
     Plus,
@@ -48,10 +50,10 @@
   onMount(async () => {
     try {
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to query characters:", err);
       dialogs.alert(
-        "Could not load character records from database: " + err.message,
+        "Could not load character records from database: " + errorMessage(err),
         "Database Error",
       );
     } finally {
@@ -87,10 +89,10 @@
     try {
       await db.characters.add(newChar);
       goto(`/editor/${id}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Insertion failed:", err);
       dialogs.alert(
-        "Could not initialize character file: " + err.message,
+        "Could not initialize character file: " + errorMessage(err),
         "Error",
       );
     }
@@ -119,9 +121,9 @@
       );
 
       characters = await db.characters.orderBy("updatedAt").reverse().toArray();
-    } catch (err: any) {
+    } catch (err) {
       console.error("Deletion failed:", err);
-      dialogs.alert("Failed to wipe record: " + err.message, "Wipe Failed");
+      dialogs.alert("Failed to wipe record: " + errorMessage(err), "Wipe Failed");
     }
   }
 
@@ -149,7 +151,7 @@
       let parsed;
       try {
         parsed = JSON.parse(metadata);
-      } catch (err) {
+      } catch {
         throw new Error(
           "Failed to parse card metadata JSON. The file structure might be corrupted.",
         );
@@ -209,21 +211,21 @@
       }
 
       const exampleMessages = parseExampleMessages(data.mes_example);
-      let assets: any[] = [];
+      let assets: Omit<CharacterAsset, "characterId">[] = [];
 
       if (Array.isArray(data.assets)) {
         assets = data.assets
-          .map((asset: any) => ({
+          .map((asset: Record<string, unknown>): Omit<CharacterAsset, "characterId"> => ({
             id: crypto.randomUUID(),
-            name: asset.name || "unnamed_asset",
+            name: typeof asset.name === "string" ? asset.name : "unnamed_asset",
             type:
               asset.type === "avatar" || asset.type === "voice"
                 ? asset.type
                 : "image",
-            uri: asset.uri || "",
-            ext: asset.ext || "png",
+            uri: typeof asset.uri === "string" ? asset.uri : "",
+            ext: typeof asset.ext === "string" ? asset.ext : "png",
           }))
-          .filter((asset: any) => asset.uri);
+          .filter((asset) => asset.uri);
       } else if (data.extensions?.assets) {
         const v2Assets = data.extensions.assets;
         if (typeof v2Assets === "object") {
@@ -357,10 +359,10 @@
         `Character "${name}" imported successfully with ${assets.length} extra media assets and ${characterBook.entries.length} Lorebook entries!`,
         "Import Successful",
       );
-    } catch (error: any) {
+    } catch (error) {
       console.error("Import failure:", error);
       dialogs.alert(
-        error.message || "Failed to import character card.",
+        errorMessage(error, "Failed to import character card."),
         "Import Failed",
       );
     } finally {

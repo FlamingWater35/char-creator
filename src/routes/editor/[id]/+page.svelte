@@ -4,6 +4,7 @@
   import { db, type Character, type CharacterAsset } from "#lib/db";
   import { settings } from "#lib/settings.svelte";
   import { dialogs } from "#lib/dialogs.svelte";
+  import { errorMessage, isBenignSaveAbort } from "#lib/errors";
   import { autoresize } from "#lib/autoresize";
   import { fade } from "svelte/transition";
   import {
@@ -13,7 +14,7 @@
     compressImage,
     toPngDataUrl,
   } from "#lib/png";
-  import { buildCardPayload } from "#lib/card";
+  import { buildCardPayload, extractJsonObject } from "#lib/card";
   import { renderPrompt, buildPromptContext } from "#lib/prompts";
   import {
     Sparkles,
@@ -123,10 +124,10 @@
             /* A missing thumbnail only costs a little bandwidth. */
           });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to load character:", err);
       dialogs.alert(
-        "Could not load character definitions: " + err.message,
+        "Could not load character definitions: " + errorMessage(err),
         "Error",
       );
       goto("/");
@@ -293,11 +294,20 @@
             if (saveState === "saving") saveState = "idle";
           }, 1000);
         }
-      } catch (err: any) {
+      } catch (err) {
+        // A save interrupted by navigation is expected, not a failure: the page
+        // is being torn down mid-transaction. Reporting it as an error told
+        // users their data was at risk when it had in fact been written.
+        if (isBenignSaveAbort(err)) {
+          console.debug("Autosave interrupted by page teardown; ignoring.", err);
+          return;
+        }
+
         console.error("Background autosave failed:", err);
         saveState = "error";
         dialogs.alert(
-          "Autosave failed: " + (err?.message || "unknown error") +
+          "Autosave failed: " +
+            errorMessage(err) +
             ". Your recent edits are still on screen — copy them somewhere safe before reloading.",
           "Save Failed",
         );
@@ -312,6 +322,12 @@
     }
   }
 
+  /**
+   * Flushes a pending save, at most once per pending change.
+   *
+   * Safe to call from `visibilitychange` and `pagehide`: both fire while the
+   * document is still alive, so the transaction can actually commit.
+   */
   function forceImmediateSave() {
     if (saveState === "waiting" && character) {
       clearTimeout(saveTimeout);
@@ -323,11 +339,17 @@
     if (document.visibilityState === "hidden") forceImmediateSave();
   }
 
+  /**
+   * Warns about unsaved work, and deliberately does **not** write.
+   *
+   * Starting an IndexedDB transaction here is what produced the
+   * `PrematureCommitError: Transaction committed too early` in the console:
+   * the browser begins tearing the document down as soon as this handler
+   * returns, killing any transaction opened inside it. The durable flush is
+   * `visibilitychange`'s job — it fires first and the page survives it.
+   */
   function handleBeforeUnload(e: BeforeUnloadEvent) {
-    // Only prompt when a write is genuinely in flight; `preventDefault` here
-    // would otherwise nag on every navigation even after a successful save.
     if (saveState === "waiting" || saveState === "saving") {
-      forceImmediateSave();
       e.preventDefault();
       e.returnValue = "";
     }
@@ -358,9 +380,12 @@
           compressedImage,
         ).catch(() => null);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      dialogs.alert("Failed to process image file: " + error.message, "Error");
+      dialogs.alert(
+        "Failed to process image file: " + errorMessage(error),
+        "Error",
+      );
     } finally {
       if (fileInput) fileInput.value = "";
     }
@@ -428,8 +453,9 @@
 
       const data = await res.json();
       return data.result;
-    } catch (e: any) {
-      if (e.name === "AbortError" || controller.signal.aborted) return null;
+    } catch (e) {
+      if ((e as { name?: string } | null)?.name === "AbortError" || controller.signal.aborted)
+        return null;
       console.error("AI fetch failed:", e);
       dialogs.alert(
         "Network connection error: Failed to communicate with the model server.",
@@ -572,23 +598,13 @@
         "Details about other related characters, including their names, relationships, and brief descriptions";
 
     const prompt = `Generate a roleplay character profile based on this concept:\n"${character.data.mainPrompt}"\n\nRespond ONLY with a valid JSON object matching this schema exactly. Output ONLY raw JSON, no markdown blocks.\n\n${JSON.stringify(schemaObj, null, 2)}`;
-    const result = await callAI(prompt, settings.systemPrompt);
 
-    if (result) {
+    try {
+      const result = await callAI(prompt, settings.systemPrompt);
+      if (!result) return;
+
       try {
-        let cleanJson = result.trim();
-        const startIdx = cleanJson.indexOf("{");
-        const endIdx = cleanJson.lastIndexOf("}");
-        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-          cleanJson = cleanJson.substring(startIdx, endIdx + 1);
-        } else if (cleanJson.startsWith("```json")) {
-          cleanJson = cleanJson
-            .replace(/^```json/, "")
-            .replace(/```$/, "")
-            .trim();
-        }
-
-        const parsed = JSON.parse(cleanJson);
+        const parsed = JSON.parse(extractJsonObject(result));
         const d = parsed.data || parsed;
 
         if (settings.genName && (d.name || d.character_name))
@@ -645,12 +661,22 @@
           d.dialogue_examples ||
           d.dialogueExamples;
         if (settings.genExampleMessages && Array.isArray(exampleMsgRaw)) {
-          character.data.exampleMessages = exampleMsgRaw.map((e: any) => ({
-            id: crypto.randomUUID(),
-            user: e.user || e.user_prompt || e.sender || "",
-            character:
-              e.character || e.char_response || e.response || e.text || "",
-          }));
+          character.data.exampleMessages = exampleMsgRaw.map(
+            (e: Record<string, unknown>) => ({
+              id: crypto.randomUUID(),
+              user:
+                (typeof e.user === "string" && e.user) ||
+                (typeof e.user_prompt === "string" && e.user_prompt) ||
+                (typeof e.sender === "string" && e.sender) ||
+                "",
+              character:
+                (typeof e.character === "string" && e.character) ||
+                (typeof e.char_response === "string" && e.char_response) ||
+                (typeof e.response === "string" && e.response) ||
+                (typeof e.text === "string" && e.text) ||
+                "",
+            }),
+          );
         }
       } catch (e) {
         console.error("Failed to parse JSON response", e);
@@ -659,8 +685,11 @@
           "Parsing Error",
         );
       }
+    } finally {
+      // A thrown call or a rejected parse used to leave the editor locked in
+      // "generating" with every field disabled.
+      generatingAll = false;
     }
-    generatingAll = false;
   }
 
   /**
@@ -760,10 +789,10 @@
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       dialogs.alert(
-        "Failed to compile Card graphic binary: " + e.message,
+        "Failed to compile Card graphic binary: " + errorMessage(e),
         "Export Error",
       );
     }

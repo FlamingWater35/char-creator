@@ -60,10 +60,17 @@ export const POST = async ({ request }: RequestEvent) => {
 			.sort((a, b) => a.name.localeCompare(b.name));
 
 		return json({ models });
-	} catch (error: any) {
-		const status = typeof error?.status === 'number' ? error.status : 502;
+	} catch (error) {
+		const status = (error as { status?: unknown } | null)?.status;
+		const message = (error as { message?: unknown } | null)?.message;
 		return json(
-			{ error: redactSecrets(String(error?.message || 'Failed to communicate with provider.')) },
+			{
+				error: redactSecrets(
+					typeof message === 'string' && message
+						? message
+						: 'Failed to communicate with provider.'
+				)
+			},
 			{ status: status === 401 ? 401 : 502 }
 		);
 	}

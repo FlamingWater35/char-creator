@@ -24,7 +24,7 @@ deliberately excluded: it needs a running dev server and a browser, and CI does
 not provision one. It exits 0 with a skip notice when Playwright is absent.
 
 Baseline before you start: `npm run check` reports 0 errors and 0 warnings, and
-all 51 unit tests pass. Do not leave either worse than you found it.
+all 78 unit tests pass. Do not leave either worse than you found it.
 
 ## Layout
 
@@ -32,8 +32,10 @@ all 51 unit tests pass. Do not leave either worse than you found it.
 src/
   env.ts                 # server env vars declared via defineEnvVars (SvelteKit 3)
   lib/
+    backup.ts            # validates untrusted backup JSON into db.ts shapes
     card.ts              # V2/V3 spec mapping, field preservation, dialogue parsing
     db.ts                # Dexie schema + versioned migrations
+    errors.ts            # errorMessage() / isBenignSaveAbort() helpers
     png.ts               # PNG chunk read/write, image compression, thumbnails
     prompts.ts           # editable enhance/regenerate templates + placeholder renderer
     reasoning.ts         # strips chain-of-thought blocks from model output
@@ -134,6 +136,12 @@ Do not add a "just pass the URL through" path.
 that people copy around. Importing a backup also refuses to apply a key from the
 file, and asks before changing the provider or base URL.
 
+**Backups are parsed, never trusted.** `src/lib/backup.ts` narrows the file into
+`db.ts` shapes and drops rows it cannot use. Do not read `JSON.parse(file)`
+fields directly in a component again: an unvalidated `exampleMessages` row
+without an `id` used to reach a keyed `{#each}` and throw at render time, and a
+hand-edited `firstMessages: []` produced an editor with no greeting at all.
+
 ## Gotchas that cost real time
 
 **SvelteKit 3 removed several things this repo used.** Each has a replacement,
@@ -180,6 +188,15 @@ keep it that way.
 `let { x }: { x: T } = $props();` — the type argument form was removed in
 Svelte 5.57.
 
+**Placeholder text is pinned on purpose.** Tailwind v4's preflight colours
+`::placeholder` with `color-mix(in oklab, currentcolor 50%, transparent)`.
+Browsers that interpolate that mix in non-premultiplied space (Chromium) paint
+the result with a purple cast, so the search bar and the field hints looked
+violet instead of white/black. `src/routes/layout.css` overrides it with
+`color: var(--foreground); opacity: 0.5`. Removing that override brings the
+purple back on Chromium while Firefox stays grey — a browser-specific bug that
+is easy to misdiagnose.
+
 ## Testing
 
 Unit tests are DOM-free and import `.ts` modules directly with explicit
@@ -198,13 +215,6 @@ from `PW_PATH`, then from the npx cache, and picks whichever of Chromium or
 Firefox is actually installed. If none is, it skips with exit code 0.
 
 ## Known issues
-
-**`PrematureCommitError` on navigation.** Navigating away from the editor while
-an autosave is pending logs a Dexie `PrematureCommitError` from
-`handleBeforeUnload` → `saveCharacter`. It predates the current feature work and
-was verified against an unmodified checkout. The write still lands, so it is
-noise rather than data loss — but the flush should be restructured to await the
-transaction properly.
 
 **`npm test` can fail with `spawn EPERM`** in a sandboxed Windows shell, because
 Node spawns one child per test file. Running a file directly

@@ -252,7 +252,7 @@ export function injectCharacterCardMetadata(base64Image: string, v3JsonString: s
     newPng.set(iend, offset);
 
     return 'data:image/png;base64,' + uint8ToBase64(newPng);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Metadata injection failed:", error);
     throw new Error("Unable to encode character data into PNG format. Ensure the image is valid.");
   }

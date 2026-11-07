@@ -200,6 +200,24 @@ export function parseExampleMessages(mesExample: string | undefined | null) {
 const SECTION_HEADERS = ['Personality', 'Scenario', 'Backstory', 'Related Characters'];
 
 /**
+ * Pulls the JSON object out of a model reply.
+ *
+ * Models routinely wrap JSON in ```json fences or add a sentence of preamble
+ * even when told not to. Slicing from the first `{` to the last `}` handles
+ * both; the fence-stripping branch this replaced could never run, because it
+ * only executed when no braces were found at all.
+ */
+export function extractJsonObject(text: string): string {
+	const trimmed = text.trim();
+
+	const start = trimmed.indexOf('{');
+	const end = trimmed.lastIndexOf('}');
+	if (start !== -1 && end > start) return trimmed.slice(start, end + 1);
+
+	// No braces: maybe a bare fenced block was returned.
+	return trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+}
+/**
  * Pulls a `Header: value` block out of a merged description, so descriptions
  * produced by older versions of this app can be split back into subfields.
  */

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { CharacterAsset } from "#lib/db";
   import { dialogs } from "#lib/dialogs.svelte";
+  import { errorMessage } from "#lib/errors";
   import { compressImage } from "#lib/png";
   import { Trash2, ImagePlus } from "@lucide/svelte";
 
@@ -53,10 +54,10 @@
           ext,
         },
       ];
-    } catch (error: any) {
+    } catch (error) {
       console.error("Asset upload error:", error);
       dialogs.alert(
-        error.message || "Failed to process and compress asset upload.",
+        errorMessage(error, "Failed to process and compress asset upload."),
         "Upload Error",
       );
     } finally {

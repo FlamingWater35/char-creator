@@ -4,6 +4,7 @@ import {
 	renderPrompt,
 	buildPromptContext,
 	isPromptCustomized,
+	templatePlaceholders,
 	DEFAULT_ENHANCE_PROMPT,
 	DEFAULT_REGENERATE_PROMPT,
 	PROMPT_PLACEHOLDERS
@@ -142,4 +143,43 @@ test('isPromptCustomized ignores surrounding whitespace', () => {
 	assert.equal(isPromptCustomized('something else', DEFAULT_ENHANCE_PROMPT), true);
 	assert.equal(isPromptCustomized('', DEFAULT_ENHANCE_PROMPT), true);
 	assert.equal(isPromptCustomized(undefined, DEFAULT_ENHANCE_PROMPT), true);
+});
+
+test('templatePlaceholders reports the tokens a template uses', () => {
+	assert.deepEqual(
+		templatePlaceholders('{concept} then {field} then {content} then {context}'),
+		['{concept}', '{field}', '{content}', '{context}']
+	);
+	assert.deepEqual(templatePlaceholders('only {field} here'), ['{field}']);
+	assert.deepEqual(templatePlaceholders('nothing at all'), []);
+});
+
+test('templatePlaceholders normalises whitespace and doubled braces', () => {
+	// Detection must agree with the renderer: both spellings substitute, so
+	// neither may be reported as missing (that is what the warning is for).
+	assert.deepEqual(templatePlaceholders('{ concept }'), ['{concept}']);
+	assert.deepEqual(templatePlaceholders('{{concept}}'), ['{concept}']);
+	assert.deepEqual(templatePlaceholders('{  field  }'), ['{field}']);
+});
+
+test('templatePlaceholders ignores unknown tokens and duplicates', () => {
+	assert.deepEqual(templatePlaceholders('{nonsense} {concept} {concept}'), ['{concept}']);
+});
+
+test('templatePlaceholders matches the documented defaults', () => {
+	const tokens = templatePlaceholders(DEFAULT_ENHANCE_PROMPT);
+	for (const placeholder of PROMPT_PLACEHOLDERS) {
+		assert.ok(
+			tokens.includes(placeholder.token),
+			`${placeholder.token} is documented but not detected in the default template`
+		);
+	}
+
+	// Regenerate is advertised as concept/field/context only. Order follows the
+	// canonical placeholder list, not the order they appear in the template.
+	assert.deepEqual(templatePlaceholders(DEFAULT_REGENERATE_PROMPT), [
+		'{concept}',
+		'{field}',
+		'{context}'
+	]);
 });

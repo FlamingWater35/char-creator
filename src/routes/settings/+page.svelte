@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { settings } from "#lib/settings.svelte";
-  import { db } from "#lib/db";
+  import { settings, GENERATION_TOGGLES } from "#lib/settings.svelte";
+  import { db, type CharacterAsset, type CharacterImage } from "#lib/db";
+  import { parseBackup, extractLegacyMedia } from "#lib/backup";
   import { dialogs } from "#lib/dialogs.svelte";
+  import { errorMessage } from "#lib/errors";
   import PromptTemplateEditor from "#lib/components/settings/PromptTemplateEditor.svelte";
   import {
     DEFAULT_ENHANCE_PROMPT,
@@ -9,6 +11,7 @@
     PROMPT_PLACEHOLDERS,
     isPromptCustomized,
     renderPrompt,
+    templatePlaceholders,
   } from "#lib/prompts";
   import { onMount } from "svelte";
   import {
@@ -28,12 +31,15 @@
     RotateCcw,
     WandSparkles,
     CircleHelp,
+    TriangleAlert,
   } from "@lucide/svelte";
   import { setMode, resetMode } from "mode-watcher";
   import { slide } from "svelte/transition";
 
   let models = $state<{ id: string; name: string }[]>([]);
   let loadingModels = $state(false);
+  /** Why the model list is empty, when it is empty for a fixable reason. */
+  let modelError = $state<string | null>(null);
 
   let dropdownOpen = $state(false);
   let searchQuery = $state("");
@@ -72,15 +78,12 @@
   /**
    * Placeholders each template actually uses, so the settings page can warn
    * about a template that never mentions `{concept}` (usually a mistake).
+   * Delegates to the renderer's own grammar so `{ concept }` is not flagged.
    */
-  function usedTokens(template: string): string[] {
-    return PROMPT_PLACEHOLDERS.filter((p) => template.includes(p.token)).map(
-      (p) => p.token,
-    );
-  }
-
-  let enhanceTokens = $derived(usedTokens(settings.enhancePrompt));
-  let regenerateTokens = $derived(usedTokens(settings.regeneratePrompt));
+  let enhanceTokens = $derived(templatePlaceholders(settings.enhancePrompt));
+  let regenerateTokens = $derived(
+    templatePlaceholders(settings.regeneratePrompt),
+  );
 
   let fileInputImportDB = $state<HTMLInputElement>();
   let autosaveStatus = $state("Synced");
@@ -115,42 +118,36 @@
     await fetchModels();
   });
 
-  $effect(() => {
-    const _ = {
-      apiKey: settings.apiKey,
-      model: settings.model,
-      temperature: settings.temperature,
-      frequencyPenalty: settings.frequencyPenalty,
-      presencePenalty: settings.presencePenalty,
-      topP: settings.topP,
-      maxTokens: settings.maxTokens,
-      systemPrompt: settings.systemPrompt,
-      enhancePrompt: settings.enhancePrompt,
-      regeneratePrompt: settings.regeneratePrompt,
-      provider: settings.provider,
-      customBaseUrl: settings.customBaseUrl,
-      genName: settings.genName,
-      genDescription: settings.genDescription,
-      genPersonality: settings.genPersonality,
-      genScenario: settings.genScenario,
-      genBackstory: settings.genBackstory,
-      genFirstMessages: settings.genFirstMessages,
-      genExampleMessages: settings.genExampleMessages,
-      genRelatedCharacters: settings.genRelatedCharacters,
-      mergeTraitsOnExport: settings.mergeTraitsOnExport,
-      exportVersion: settings.exportVersion,
-    };
+  /**
+   * Persists settings shortly after the user stops changing them.
+   *
+   * `snapshot()` reads every persisted field, which subscribes this effect to
+   * all of them — the previous version listed them by hand and would have kept
+   * working (silently, wrongly) if a new setting were added.
+   *
+   * The write is debounced because dragging a slider or typing a prompt used to
+   * hit `localStorage` on every single change, and each write re-created the
+   * status timer.
+   */
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-    settings.save();
+  $effect(() => {
+    // Touch the snapshot so the effect re-runs when any setting changes.
+    void settings.snapshot();
+
     autosaveStatus = "Saving changes...";
-    const t = setTimeout(() => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      settings.save();
       autosaveStatus = "All changes saved locally";
-    }, 1000);
-    return () => clearTimeout(t);
+    }, 400);
+
+    return () => clearTimeout(saveTimer);
   });
 
   async function fetchModels() {
     loadingModels = true;
+    modelError = null;
     try {
       const res = await fetch("/api/models", {
         method: "POST",
@@ -161,8 +158,22 @@
           apiKey: settings.apiKey,
         }),
       });
-      const data = await res.json();
-      if (data.models && data.models.length > 0) {
+
+      const data = await res.json().catch(() => ({}));
+
+      // A rejected request used to collapse into an empty list, which reads
+      // exactly like "this provider has no models" — the one case where the
+      // user needs the actual reason (bad key, unreachable host, wrong URL).
+      if (!res.ok) {
+        modelError =
+          typeof data.error === "string" && data.error
+            ? data.error
+            : `Model list request failed (HTTP ${res.status}).`;
+        models = [];
+        return;
+      }
+
+      if (Array.isArray(data.models) && data.models.length > 0) {
         models = data.models;
 
         const preferredDefault = providerDefaults[settings.provider];
@@ -180,10 +191,12 @@
         }
       } else {
         models = [];
+        modelError = "The provider returned an empty model list.";
       }
     } catch (e) {
       console.error("Failed to load models:", e);
       models = [];
+      modelError = "Could not reach the model list endpoint: " + errorMessage(e);
     } finally {
       loadingModels = false;
     }
@@ -258,8 +271,8 @@
       a.remove();
       // Revoking synchronously can cancel the download in Firefox and Safari.
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    } catch (e: any) {
-      dialogs.alert("Export failed: " + e.message, "Export Error");
+    } catch (e) {
+      dialogs.alert("Export failed: " + errorMessage(e), "Export Error");
     }
   }
 
@@ -267,15 +280,30 @@
    * True when the payload looks like a Char Creator backup rather than an
    * unrelated JSON file the user picked by mistake.
    */
-  function looksLikeBackup(value: any): boolean {
+  function looksLikeBackup(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as {
+      app?: unknown;
+      characters?: unknown;
+      settings?: unknown;
+    };
     return (
-      value &&
-      typeof value === "object" &&
-      (value.app === "char-creator" ||
-        Array.isArray(value.characters) ||
-        (value.settings && typeof value.settings === "object"))
+      candidate.app === "char-creator" ||
+      Array.isArray(candidate.characters) ||
+      (typeof candidate.settings === "object" && candidate.settings !== null)
     );
   }
+
+  /** Shape of the parts of a backup file this page actually reads. */
+  interface BackupFile {
+    app?: string;
+    settings?: Record<string, unknown>;
+    characters?: unknown[];
+    characterImages?: unknown[];
+    characterAssets?: unknown[];
+  }
+
+
 
   async function importDatabase(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -292,9 +320,19 @@
 
     try {
       const text = await file.text();
-      const backup = JSON.parse(text);
 
-      if (!looksLikeBackup(backup)) {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        await dialogs.alert(
+          "That file is not valid JSON. Pick a Char Creator backup (.json).",
+          "Unreadable File",
+        );
+        return;
+      }
+
+      if (!looksLikeBackup(raw)) {
         const proceedAnyway = await dialogs.confirm(
           "This file does not match Char Creator standards. Attempt import anyway?",
           "Format Warning",
@@ -305,12 +343,14 @@
         }
       }
 
+      // Everything below works on validated shapes: a hand-edited or truncated
+      // backup drops its bad rows instead of writing `undefined` into Dexie.
+      const backup = parseBackup(raw);
+
       // An API key inside a backup file is never trustworthy: it belongs to
       // whoever produced the file, and applying it silently would hand this
       // browser's requests (and the user's prompts) to them.
-      const fileCarriesKey =
-        typeof backup.settings?.apiKey === "string" &&
-        backup.settings.apiKey.length > 0;
+      const fileCarriesKey = backup.carriesApiKey;
 
       // Connection settings are the other half of that attack: a file that sets
       // provider=custom plus a base URL redirects every later prompt.
@@ -380,8 +420,8 @@
 
       let importedCount = 0;
       if (Array.isArray(backup.characters)) {
-        const legacyImages: { id: string; image: string }[] = [];
-        const legacyAssets: Record<string, unknown>[] = [];
+        const legacyImages: CharacterImage[] = [];
+        const legacyAssets: CharacterAsset[] = [];
 
         // One transaction for the whole restore: a malformed row now rolls back
         // instead of leaving the database half-populated.
@@ -391,84 +431,30 @@
           db.characterImages,
           db.characterAssets,
           async () => {
-            for (const char of backup.characters) {
-              if (!char?.id || !char?.name) continue;
+            for (const row of backup.characters) {
+              await db.characters.put(row);
+              importedCount++;
 
               // Older backups stored the avatar and assets inline on `data`;
               // newer ones keep them in their own tables.
-              const data = char.data ?? {};
-              let fallbackImage: string | null = null;
-              let fallbackAssets: Record<string, unknown>[] = [];
-              if (typeof data.image === "string") fallbackImage = data.image;
-              if (Array.isArray(data.assets)) fallbackAssets = data.assets;
-
-              const finalChar = {
-                id: char.id,
-                name: char.name,
-                createdAt: char.createdAt ? new Date(char.createdAt) : new Date(),
-                updatedAt: char.updatedAt ? new Date(char.updatedAt) : new Date(),
-                data: {
-                  mainPrompt: data.mainPrompt || "",
-                  description: data.description || "",
-                  personality: data.personality || "",
-                  scenario: data.scenario || "",
-                  backstory: data.backstory || "",
-                  firstMessages: Array.isArray(data.firstMessages)
-                    ? data.firstMessages
-                    : [""],
-                  exampleMessages: Array.isArray(data.exampleMessages)
-                    ? data.exampleMessages
-                    : [],
-                  thumbnail: data.thumbnail || null,
-                  relatedCharacters: data.relatedCharacters || "",
-                  characterBook: data.characterBook
-                    ? {
-                        name: data.characterBook.name || "",
-                        description: data.characterBook.description || "",
-                        entries: Array.isArray(data.characterBook.entries)
-                          ? data.characterBook.entries
-                          : [],
-                      }
-                    : { name: "", description: "", entries: [] },
-                  worldInfo: data.worldInfo || "",
-                  // Round-trip payloads from imported cards survive a restore.
-                  cardMeta:
-                    data.cardMeta && typeof data.cardMeta === "object"
-                      ? data.cardMeta
-                      : undefined,
-                },
-              };
-
-              await db.characters.put(finalChar);
-              importedCount++;
-
-              if (fallbackImage) {
-                legacyImages.push({ id: char.id, image: fallbackImage });
+              const legacy = extractLegacyMedia(row);
+              if (legacy.image) {
+                legacyImages.push({ id: row.id, image: legacy.image });
               }
-              for (const asset of fallbackAssets) {
-                legacyAssets.push({ ...asset, characterId: char.id });
+              for (const asset of legacy.assets) {
+                legacyAssets.push({ ...asset, characterId: row.id });
               }
             }
 
             if (legacyImages.length > 0)
               await db.characterImages.bulkPut(legacyImages);
             if (legacyAssets.length > 0)
-              await db.characterAssets.bulkPut(legacyAssets as any);
+              await db.characterAssets.bulkPut(legacyAssets);
 
-            if (Array.isArray(backup.characterImages)) {
-              await db.characterImages.bulkPut(
-                backup.characterImages.filter(
-                  (img: any) => img?.id && typeof img.image === "string",
-                ),
-              );
-            }
-            if (Array.isArray(backup.characterAssets)) {
-              await db.characterAssets.bulkPut(
-                backup.characterAssets.filter(
-                  (asset: any) => asset?.id && asset?.characterId,
-                ),
-              );
-            }
+            if (backup.images.length > 0)
+              await db.characterImages.bulkPut(backup.images);
+            if (backup.assets.length > 0)
+              await db.characterAssets.bulkPut(backup.assets);
           },
         );
 
@@ -491,9 +477,9 @@
       }
 
       await fetchModels();
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      dialogs.alert("Error importing file: " + error.message, "Import failed");
+      dialogs.alert("Error importing file: " + errorMessage(error), "Import failed");
     } finally {
       if (fileInputImportDB) fileInputImportDB.value = "";
     }
@@ -749,6 +735,15 @@
               {/if}
             </div>
           {/if}
+          {#if modelError}
+            <p
+              class="flex items-start gap-2 text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed"
+              role="status"
+            >
+              <TriangleAlert class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{modelError}</span>
+            </p>
+          {/if}
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
@@ -994,14 +989,11 @@
           role="group"
           aria-label="Prompt generation toggles"
         >
-          {#each [{ key: "genName", label: "Name" }, { key: "genDescription", label: "Description" }, { key: "genPersonality", label: "Personality" }, { key: "genScenario", label: "Scenario" }, { key: "genBackstory", label: "Backstory" }, { key: "genFirstMessages", label: "Greetings" }, { key: "genExampleMessages", label: "Examples" }, { key: "genRelatedCharacters", label: "Relations" }] as toggle}
+          {#each GENERATION_TOGGLES as toggle (toggle.key)}
             <button
               role="switch"
-              aria-checked={(settings as any)[toggle.key]}
-              onclick={() =>
-                ((settings as any)[toggle.key] = !(settings as any)[
-                  toggle.key
-                ])}
+              aria-checked={settings[toggle.key]}
+              onclick={() => (settings[toggle.key] = !settings[toggle.key])}
               class="flex items-center justify-between p-4 border rounded-xl bg-background hover:border-primary transition-all group cursor-pointer text-left shadow-sm min-h-14"
             >
               <span
@@ -1009,16 +1001,16 @@
                 >{toggle.label}</span
               >
               <div
-                class="w-10 h-6 rounded-full relative transition-colors {(
-                  settings as any
-                )[toggle.key]
+                class="w-10 h-6 rounded-full relative transition-colors {settings[
+                  toggle.key
+                ]
                   ? 'bg-blue-600'
                   : 'bg-muted'}"
               >
                 <div
-                  class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform {(
-                    settings as any
-                  )[toggle.key]
+                  class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform {settings[
+                    toggle.key
+                  ]
                     ? 'translate-x-4'
                     : 'translate-x-0'} shadow-sm"
                 ></div>

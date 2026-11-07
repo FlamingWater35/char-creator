@@ -81,6 +81,19 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+   * Tailwind v4 derives the placeholder colour with
+   * `color-mix(in oklab, currentcolor 50%, transparent)`. Browsers that
+   * interpolate that mix in non-premultiplied space (Chromium among them)
+   * render the result with a purple cast, so hint text in the search bar and
+   * the field examples reads as violet rather than white/black. Pin it to the
+   * neutral foreground instead — theme-aware and identical everywhere.
+   */
+  ::placeholder {
+    color: var(--foreground);
+    opacity: 0.5;
+  }
 }
 
 @keyframes spin-fluent {

@@ -25,7 +25,24 @@ const ASSETS = [...BUILD_PATHS, ...assets.map((entry) => entry.path)];
 /** Cap the runtime cache so long-lived installs cannot grow without bound. */
 const MAX_RUNTIME_ENTRIES = 120;
 
-self.addEventListener('install', (event: any) => {
+/**
+ * The service worker global scope.
+ *
+ * `self` is typed as `Window` in a module that the app also type-checks, so the
+ * worker-only members (`skipWaiting`, `clients`, `addEventListener` for the
+ * fetch lifecycle) are reached through one narrow declaration instead of
+ * `(self as any)` at every call site.
+ */
+interface WorkerScope {
+	addEventListener(type: string, listener: (event: any) => void): void;
+	skipWaiting(): Promise<void>;
+	clients: { claim(): Promise<void> };
+	location: { origin: string };
+}
+
+const scope = self as unknown as WorkerScope;
+
+self.addEventListener('install', (event: { waitUntil(promise: Promise<unknown>): void }) => {
 	event.waitUntil(
 		(async () => {
 			const cache = await caches.open(CACHE);
@@ -41,19 +58,19 @@ self.addEventListener('install', (event: any) => {
 
 			// Take over as soon as possible; the app is client-rendered, so a
 			// mixed-version page is safe.
-			await (self as any).skipWaiting();
+			await scope.skipWaiting();
 		})()
 	);
 });
 
-self.addEventListener('activate', (event: any) => {
+self.addEventListener('activate', (event: { waitUntil(promise: Promise<unknown>): void }) => {
 	event.waitUntil(
 		(async () => {
 			const keys = await caches.keys();
 			await Promise.all(
 				keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))
 			);
-			await (self as any).clients.claim();
+			await scope.clients.claim();
 		})()
 	);
 });
@@ -77,7 +94,7 @@ function isCacheable(response: Response): boolean {
 	return response.status === 200 && response.type !== 'opaque' && response.type !== 'opaqueredirect';
 }
 
-self.addEventListener('fetch', (event: any) => {
+self.addEventListener('fetch', (event: { request: Request; respondWith(response: Promise<Response>): void }) => {
 	const request: Request = event.request;
 	if (request.method !== 'GET') return;
 
@@ -85,8 +102,8 @@ self.addEventListener('fetch', (event: any) => {
 
 	// Never cache the LLM proxy: responses are unique per prompt and must not
 	// be replayed after a reconnect.
-	if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;
-	if (url.origin !== self.location.origin) return;
+	if (url.origin === scope.location.origin && url.pathname.startsWith('/api/')) return;
+	if (url.origin !== scope.location.origin) return;
 
 	event.respondWith(
 		(async () => {

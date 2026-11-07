@@ -71,6 +71,34 @@ const EMPTY_FIELD = "(unknown field)";
 const EMPTY_CONTENT = "(no content yet)";
 const EMPTY_CONTEXT = "(no other fields filled in yet)";
 
+/** Placeholder names the renderer understands, in display order. */
+export const PLACEHOLDER_NAMES = ["concept", "field", "content", "context"] as const;
+
+/**
+ * Matches `{name}` / `{{name}}` with optional inner whitespace — the same shape
+ * `renderPrompt` substitutes.
+ */
+const PLACEHOLDER_RE =
+  /\{\{\s*(concept|field|content|context)\s*\}\}|\{\s*(concept|field|content|context)\s*\}/g;
+
+/**
+ * The placeholders a template actually uses, as canonical `{name}` tokens.
+ *
+ * Detection must share the renderer's grammar: a template written as
+ * `{ concept }` renders correctly, so it must not be reported as missing the
+ * token (that warning is only useful when it is accurate).
+ */
+export function templatePlaceholders(template: string): string[] {
+  const found = new Set<string>();
+  for (const match of template.matchAll(PLACEHOLDER_RE)) {
+    const name = (match[1] ?? match[2]) as string;
+    found.add(`{${name}}`);
+  }
+  return PLACEHOLDER_NAMES.map((name) => `{${name}}`).filter((token) =>
+    found.has(token),
+  );
+}
+
 /**
  * Substitutes `{name}` / `{{name}}` placeholders with their values.
  *
@@ -90,7 +118,7 @@ export function renderPrompt(
   };
 
   return template.replace(
-    /\{\{\s*(concept|field|content|context)\s*\}\}|\{\s*(concept|field|content|context)\s*\}/g,
+    PLACEHOLDER_RE,
     (_match, double: string | undefined, single: string | undefined) =>
       values[(double ?? single ?? "").toLowerCase()] ?? "",
   );

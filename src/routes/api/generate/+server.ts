@@ -59,6 +59,25 @@ function wantsCompletionTokens(message: string): boolean {
 	return /max_completion_tokens|use .*max_completion_tokens/i.test(message);
 }
 
+/**
+ * SDK errors carry `status` and `message` but are not a declared class, so the
+ * proxy reads them defensively rather than casting to `any` at each site.
+ */
+function statusOf(error: unknown): number | undefined {
+	const status = (error as { status?: unknown } | null)?.status;
+	return typeof status === 'number' ? status : undefined;
+}
+
+function errorMessageOf(error: unknown): string {
+	const message = (error as { message?: unknown } | null)?.message;
+	return typeof message === 'string' ? message : '';
+}
+
+function isAbortError(error: unknown): boolean {
+	const name = (error as { name?: unknown } | null)?.name;
+	return name === 'AbortError';
+}
+
 export const POST = async ({ request, url }: RequestEvent) => {
 	let raw: unknown;
 	try {
@@ -110,16 +129,19 @@ export const POST = async ({ request, url }: RequestEvent) => {
 				buildParams(model, messages, body),
 				options
 			)) as OpenAI.Chat.Completions.ChatCompletion;
-		} catch (firstError: any) {
-			const message = String(firstError?.message ?? '');
-			if (firstError?.status !== 400 || !isUnsupportedParamError(message)) throw firstError;
+		} catch (firstError) {
+			const message = errorMessageOf(firstError);
+			if (statusOf(firstError) !== 400 || !isUnsupportedParamError(message)) throw firstError;
 
 			// The model rejects sampling controls (o-series, GPT-5+, several
 			// OpenRouter routes). Retry with the smallest legal payload rather than
 			// surfacing a 400 the user cannot act on.
 			const minimal: ChatParams = { model, messages };
 			if (wantsCompletionTokens(message)) {
-				(minimal as any).max_completion_tokens = body.maxTokens ?? 8192;
+				// `max_completion_tokens` is the newer spelling; the SDK type does
+				// not declare it, so it is added through a narrow record cast.
+				(minimal as ChatParams & { max_completion_tokens?: number }).max_completion_tokens =
+					body.maxTokens ?? 8192;
 			} else {
 				minimal.max_tokens = body.maxTokens ?? 8192;
 			}
@@ -129,8 +151,8 @@ export const POST = async ({ request, url }: RequestEvent) => {
 					minimal,
 					options
 				)) as OpenAI.Chat.Completions.ChatCompletion;
-			} catch (secondError: any) {
-				if (wantsCompletionTokens(String(secondError?.message ?? ''))) {
+			} catch (secondError) {
+				if (wantsCompletionTokens(errorMessageOf(secondError))) {
 					completion = (await client.chat.completions.create(
 						{
 							model,
@@ -147,14 +169,14 @@ export const POST = async ({ request, url }: RequestEvent) => {
 
 		const content = stripReasoning(completion.choices[0]?.message?.content || '');
 		return json({ result: content });
-	} catch (error: any) {
-		if (error?.name === 'AbortError' || request.signal.aborted) {
+	} catch (error) {
+		if (isAbortError(error) || request.signal.aborted) {
 			return new Response(null, { status: 499 }); // Client closed connection
 		}
 
-		const status = typeof error?.status === 'number' ? error.status : 502;
+		const status = statusOf(error);
 		const message = redactSecrets(
-			String(error?.message || 'An unexpected error occurred during model inference.')
+			errorMessageOf(error) || 'An unexpected error occurred during model inference.'
 		);
 		return json({ error: message }, { status: status === 401 || status === 429 ? status : 502 });
 	}

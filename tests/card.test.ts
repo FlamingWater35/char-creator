@@ -9,7 +9,8 @@ import {
 	serializeExampleMessages,
 	serializeEntry,
 	serializeBook,
-	extractSection
+	extractSection,
+	extractJsonObject
 } from '../src/lib/card.ts';
 import type { Character, CharacterBookEntry } from '../src/lib/db.ts';
 
@@ -234,6 +235,27 @@ test('a section stops at a blank line so trailing prose stays in the description
 test('extractSection returns the text untouched when the header is absent', () => {
 	const text = 'just prose, no headers';
 	assert.deepEqual(extractSection(text, 'Personality'), { content: '', cleanedText: text });
+});
+
+test('extractJsonObject unwraps a fenced reply', () => {
+	assert.equal(extractJsonObject('```json\n{"name":"Merlin"}\n```'), '{"name":"Merlin"}');
+	assert.equal(extractJsonObject('```\n{"name":"Merlin"}\n```'), '{"name":"Merlin"}');
+});
+
+test('extractJsonObject drops a conversational preamble', () => {
+	const reply = 'Sure! Here is the character:\n{"name":"Merlin","data":{"name":"Merlin"}}';
+	assert.equal(extractJsonObject(reply), '{"name":"Merlin","data":{"name":"Merlin"}}');
+});
+
+test('extractJsonObject keeps nested braces intact', () => {
+	const json = '{"data":{"firstMessages":["hi"],"nested":{"a":1}}}';
+	assert.equal(extractJsonObject(`prefix ${json} suffix`), json);
+});
+
+test('extractJsonObject handles a reply with no object at all', () => {
+	// Must not throw or invent braces; the caller's JSON.parse reports it.
+	assert.equal(extractJsonObject('no json here'), 'no json here');
+	assert.equal(extractJsonObject('```json\n\n```'), '');
 });
 
 function makeCharacter(cardMeta: Record<string, unknown> = {}): Character {
